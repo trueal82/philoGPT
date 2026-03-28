@@ -32,21 +32,4 @@ const SystemPrompt = mongoose.model<ISystemPrompt, ISystemPromptModel>(
   systemPromptSchema,
 );
 
-/**
- * Seed the default system prompt if none exists.
- * Call this explicitly at startup instead of as a module-level side effect.
- */
-export async function ensureDefaultSystemPrompt(): Promise<void> {
-  const existing = await SystemPrompt.findOne({ isActive: true });
-  if (!existing) {
-    await SystemPrompt.create({
-      content: 'You are a helpful AI assistant. Respond clearly and accurately to user queries.',
-      isActive: true,
-    });
-    log.info('Default system prompt created');
-  } else {
-    log.debug('Active system prompt already exists');
-  }
-}
-
 export default SystemPrompt;

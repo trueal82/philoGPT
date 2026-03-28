@@ -61,6 +61,21 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="sessions">
+                            <i class="fas fa-comments"></i> Sessions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="tools">
+                            <i class="fas fa-wrench"></i> Tools
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="client-memories">
+                            <i class="fas fa-brain"></i> Client Memory
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" data-page="playground">
                             <i class="fas fa-play-circle"></i> Playground
                         </a>
@@ -115,6 +130,18 @@
                         <select class="form-control" id="userSubscriptionId">
                             <option value="">-- None --</option>
                         </select>
+                    </div>
+                    <hr>
+                    <div id="userLockSection">
+                        <div class="mb-3">
+                            <label class="form-label">Lock Status</label>
+                            <div id="userLockStatus"></div>
+                        </div>
+                        <div class="mb-3" id="userLockReasonGroup" style="display:none">
+                            <label class="form-label">Lock Reason</label>
+                            <input type="text" class="form-control" id="userLockReason" maxlength="500">
+                        </div>
+                        <button type="button" class="btn btn-warning btn-sm" id="toggleLockBtn">Lock</button>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -213,6 +240,10 @@
                                 <input type="number" class="form-control" id="llmConfigMaxTokens">
                             </div>
                         </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="llmConfigSupportsTools">
+                        <label class="form-check-label" for="llmConfigSupportsTools">Supports Tools</label>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -320,6 +351,115 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="saveSubscription">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Messages Modal -->
+    <div class="modal fade" id="sessionMessagesModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionMessagesModalTitle">Session Messages</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="sessionMessagesBody">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tool Modal -->
+    <div class="modal fade" id="toolModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="toolModalTitle">Tool</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name (machine ID)</label>
+                        <input type="text" class="form-control" id="toolName" placeholder="e.g. wikipedia_lookup">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" class="form-control" id="toolDisplayName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (passed to LLM)</label>
+                        <textarea class="form-control" id="toolDescription" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <select class="form-control" id="toolType">
+                            <option value="wikipedia">Wikipedia</option>
+                            <option value="client_memory">Client Memory</option>
+                        </select>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="toolEnabled">
+                        <label class="form-check-label" for="toolEnabled">Enabled</label>
+                    </div>
+                    <div id="toolWikipediaConfig">
+                        <hr>
+                        <h6>Wikipedia Configuration</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Max Results</label>
+                                    <input type="number" class="form-control" id="toolConfigMaxResults" min="1" max="10" value="3">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Default Language</label>
+                                    <input type="text" class="form-control" id="toolConfigLanguage" placeholder="en" maxlength="10">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveTool">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Client Memory Modal -->
+    <div class="modal fade" id="clientMemoryModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="clientMemoryModalTitle">Client Memory</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">User</label>
+                            <input type="text" class="form-control" id="cmUserEmail" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Bot</label>
+                            <input type="text" class="form-control" id="cmBotName" readonly>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Memory Data (JSON)</label>
+                        <textarea class="form-control font-monospace" id="cmData" rows="10" placeholder='{"name": "Alice", "goal": "learn stoicism"}'></textarea>
+                        <small class="text-muted">Edit as JSON key-value pairs. Maximum ~10 000 characters.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveClientMemory">Save Changes</button>
                 </div>
             </div>
         </div>

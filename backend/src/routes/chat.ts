@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import ChatSession from '../models/ChatSession';
 import Message from '../models/Message';
 import User, { IUser } from '../models/User';
+import ClientMemory from '../models/ClientMemory';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -137,6 +138,26 @@ router.delete('/sessions/:id', authenticateToken, async (req: Request, res: Resp
   } catch (error) {
     log.error({ err: error }, 'Error deleting session');
     res.status(500).json({ message: 'Error deleting session' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client memory — read own memory for a specific bot
+// ---------------------------------------------------------------------------
+router.get('/memory/:botId', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.botId)) {
+      res.status(400).json({ message: 'Invalid bot ID' });
+      return;
+    }
+    const memory = await ClientMemory.findOne({
+      userId: (req.user as IUser)._id,
+      botId: req.params.botId,
+    }).lean();
+    res.json({ memory: memory ?? null });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching client memory');
+    res.status(500).json({ message: 'Error fetching client memory' });
   }
 });
 

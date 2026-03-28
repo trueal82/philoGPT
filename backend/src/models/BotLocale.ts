@@ -17,7 +17,7 @@ const botLocaleSchema = new Schema<IBotLocale>(
     languageCode: { type: String, required: true, lowercase: true, trim: true, maxlength: 10 },
     name: { type: String, trim: true, maxlength: 100 },
     description: { type: String, trim: true, maxlength: 500 },
-    personality: { type: String, trim: true, maxlength: 500 },
+    personality: { type: String, trim: true, maxlength: 2000 },
     systemPrompt: { type: String, required: true, maxlength: 10000 },
   },
   { timestamps: true },

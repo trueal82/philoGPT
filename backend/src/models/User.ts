@@ -12,6 +12,9 @@ export interface IUser extends Document {
   languageCode: string;
   userGroupId?: Types.ObjectId;
   subscriptionId?: Types.ObjectId;
+  isLocked: boolean;
+  lockedAt?: Date;
+  lockedReason?: string;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -57,6 +60,9 @@ const userSchema = new Schema<IUser, IUserModel>(
     },
     userGroupId: { type: Schema.Types.ObjectId, ref: 'UserGroup' },
     subscriptionId: { type: Schema.Types.ObjectId, ref: 'Subscription' },
+    isLocked: { type: Boolean, default: false, index: true },
+    lockedAt: { type: Date },
+    lockedReason: { type: String, maxlength: 500 },
   },
   { timestamps: true },
 );

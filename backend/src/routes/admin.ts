@@ -8,6 +8,10 @@ import Language from '../models/Language';
 import UserGroup from '../models/UserGroup';
 import Subscription from '../models/Subscription';
 import BotLocale from '../models/BotLocale';
+import ChatSession from '../models/ChatSession';
+import Message from '../models/Message';
+import Tool from '../models/Tool';
+import ClientMemory from '../models/ClientMemory';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -100,6 +104,55 @@ router.delete('/users/:id', authenticateToken, requireAdmin, async (req: Request
   }
 });
 
+// Lock user
+router.post('/users/:id/lock', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid user ID' });
+      return;
+    }
+    const { reason } = req.body as { reason?: string };
+    const update: Record<string, unknown> = { isLocked: true, lockedAt: new Date() };
+    if (reason && typeof reason === 'string') {
+      update.lockedReason = reason.slice(0, 500);
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, select: '-password' });
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    log.info({ userId: req.params.id, reason }, 'User locked');
+    res.json({ user, message: 'User locked successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error locking user');
+    res.status(500).json({ message: 'Error locking user' });
+  }
+});
+
+// Unlock user
+router.post('/users/:id/unlock', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid user ID' });
+      return;
+    }
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isLocked: false, $unset: { lockedAt: 1, lockedReason: 1 } },
+      { new: true, select: '-password' },
+    );
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    log.info({ userId: req.params.id }, 'User unlocked');
+    res.json({ user, message: 'User unlocked successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error unlocking user');
+    res.status(500).json({ message: 'Error unlocking user' });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // LLM Configs
 // ---------------------------------------------------------------------------
@@ -116,12 +169,12 @@ router.get('/llm-configs', authenticateToken, requireAdmin, async (_req: Request
 
 router.post('/llm-configs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty } = req.body;
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools } = req.body;
     if (!name || !provider || !VALID_PROVIDERS.includes(provider)) {
       res.status(400).json({ message: 'Name and a valid provider are required' });
       return;
     }
-    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty });
+    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools: !!supportsTools });
     await config.save();
     log.info({ configId: config._id, name, provider }, 'LLM config created');
     res.status(201).json({ config, message: 'LLM configuration created successfully' });
@@ -137,10 +190,13 @@ router.put('/llm-configs/:id', authenticateToken, requireAdmin, async (req: Requ
       res.status(400).json({ message: 'Invalid config ID' });
       return;
     }
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty } = req.body;
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools } = req.body;
+    const update: Record<string, unknown> = { name, provider, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty };
+    if (apiKey) update.apiKey = apiKey;
+    if (supportsTools !== undefined) update.supportsTools = !!supportsTools;
     const config = await LLMConfig.findByIdAndUpdate(
       req.params.id,
-      { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty },
+      update,
       { new: true, runValidators: true },
     );
     if (!config) {
@@ -603,6 +659,340 @@ router.delete('/bot-locales/:botId/:languageCode', authenticateToken, requireAdm
   } catch (error) {
     log.error({ err: error }, 'Error deleting bot locale');
     res.status(500).json({ message: 'Error deleting bot locale' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sessions (admin view — all users)
+// ---------------------------------------------------------------------------
+router.get('/sessions', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const skip = (page - 1) * limit;
+
+    const filter: Record<string, unknown> = {};
+    const userId = req.query.userId as string | undefined;
+    if (userId) {
+      if (!isValidObjectId(userId)) {
+        res.status(400).json({ message: 'Invalid userId filter' });
+        return;
+      }
+      filter.userId = userId;
+    }
+
+    const [sessions, total] = await Promise.all([
+      ChatSession.find(filter)
+        .populate('userId', 'email')
+        .populate('botId', 'name avatar')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ChatSession.countDocuments(filter),
+    ]);
+
+    // Attach message counts
+    const sessionIds = sessions.map((s) => s._id);
+    const counts = await Message.aggregate([
+      { $match: { sessionId: { $in: sessionIds } } },
+      { $group: { _id: '$sessionId', count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(counts.map((c: { _id: unknown; count: number }) => [String(c._id), c.count]));
+    const sessionsWithCounts = sessions.map((s) => ({
+      ...s,
+      messageCount: countMap.get(String(s._id)) || 0,
+    }));
+
+    res.json({ sessions: sessionsWithCounts, total, page, limit });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching sessions');
+    res.status(500).json({ message: 'Error fetching sessions' });
+  }
+});
+
+router.get('/sessions/:id/messages', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    const messages = await Message.find({ sessionId: req.params.id }).sort({ createdAt: 1 }).lean();
+    res.json({ messages });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching session messages');
+    res.status(500).json({ message: 'Error fetching session messages' });
+  }
+});
+
+router.delete('/sessions/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    const session = await ChatSession.findByIdAndDelete(req.params.id);
+    if (!session) {
+      res.status(404).json({ message: 'Session not found' });
+      return;
+    }
+    await Message.deleteMany({ sessionId: req.params.id });
+    log.info({ sessionId: req.params.id }, 'Session deleted by admin');
+    res.json({ message: 'Session deleted successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting session');
+    res.status(500).json({ message: 'Error deleting session' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+const VALID_TOOL_TYPES = ['wikipedia', 'client_memory'] as const;
+
+router.get('/tools', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const tools = await Tool.find().sort({ name: 1 });
+    res.json({ tools });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching tools');
+    res.status(500).json({ message: 'Error fetching tools' });
+  }
+});
+
+router.post('/tools', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, displayName, description, type, enabled, config } = req.body as {
+      name: string; displayName: string; description: string; type: string; enabled?: boolean; config?: Record<string, unknown>;
+    };
+    if (!name || !displayName || !description || !type) {
+      res.status(400).json({ message: 'name, displayName, description, and type are required' });
+      return;
+    }
+    if (!VALID_TOOL_TYPES.includes(type as typeof VALID_TOOL_TYPES[number])) {
+      res.status(400).json({ message: `Type must be one of: ${VALID_TOOL_TYPES.join(', ')}` });
+      return;
+    }
+    const sanitizedConfig: Record<string, unknown> = {};
+    if (config && typeof config === 'object' && !Array.isArray(config)) {
+      if (typeof config.maxResults === 'number') sanitizedConfig.maxResults = Math.min(10, Math.max(1, config.maxResults));
+      if (typeof config.language === 'string') sanitizedConfig.language = config.language.slice(0, 10);
+    }
+    const tool = new Tool({ name, displayName, description, type, enabled: !!enabled, config: sanitizedConfig });
+    await tool.save();
+    log.info({ toolId: tool._id, name }, 'Tool created');
+    res.status(201).json({ tool, message: 'Tool created successfully' });
+  } catch (error: any) {
+    if (error.code === 11000) {
+      res.status(409).json({ message: 'A tool with this name already exists' });
+      return;
+    }
+    log.error({ err: error }, 'Error creating tool');
+    res.status(500).json({ message: 'Error creating tool' });
+  }
+});
+
+router.put('/tools/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid tool ID' });
+      return;
+    }
+    const { name, displayName, description, type, enabled, config } = req.body as {
+      name?: string; displayName?: string; description?: string; type?: string; enabled?: boolean; config?: Record<string, unknown>;
+    };
+    if (type && !VALID_TOOL_TYPES.includes(type as typeof VALID_TOOL_TYPES[number])) {
+      res.status(400).json({ message: `Type must be one of: ${VALID_TOOL_TYPES.join(', ')}` });
+      return;
+    }
+    const update: Record<string, unknown> = {};
+    if (name !== undefined) update.name = name;
+    if (displayName !== undefined) update.displayName = displayName;
+    if (description !== undefined) update.description = description;
+    if (type !== undefined) update.type = type;
+    if (enabled !== undefined) update.enabled = !!enabled;
+    if (config && typeof config === 'object' && !Array.isArray(config)) {
+      const sanitizedConfig: Record<string, unknown> = {};
+      if (typeof config.maxResults === 'number') sanitizedConfig.maxResults = Math.min(10, Math.max(1, config.maxResults));
+      if (typeof config.language === 'string') sanitizedConfig.language = config.language.slice(0, 10);
+      update.config = sanitizedConfig;
+    }
+    const tool = await Tool.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    if (!tool) {
+      res.status(404).json({ message: 'Tool not found' });
+      return;
+    }
+    log.info({ toolId: req.params.id }, 'Tool updated');
+    res.json({ tool, message: 'Tool updated successfully' });
+  } catch (error: any) {
+    if (error.code === 11000) {
+      res.status(409).json({ message: 'A tool with this name already exists' });
+      return;
+    }
+    log.error({ err: error }, 'Error updating tool');
+    res.status(500).json({ message: 'Error updating tool' });
+  }
+});
+
+router.delete('/tools/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid tool ID' });
+      return;
+    }
+    const tool = await Tool.findByIdAndDelete(req.params.id);
+    if (!tool) {
+      res.status(404).json({ message: 'Tool not found' });
+      return;
+    }
+    log.info({ toolId: req.params.id }, 'Tool deleted');
+    res.json({ message: 'Tool deleted successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting tool');
+    res.status(500).json({ message: 'Error deleting tool' });
+  }
+});
+
+router.post('/tools/:id/toggle', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid tool ID' });
+      return;
+    }
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) {
+      res.status(404).json({ message: 'Tool not found' });
+      return;
+    }
+    tool.enabled = !tool.enabled;
+    await tool.save();
+    log.info({ toolId: req.params.id, enabled: tool.enabled }, 'Tool toggled');
+    res.json({ tool, message: `Tool ${tool.enabled ? 'enabled' : 'disabled'} successfully` });
+  } catch (error) {
+    log.error({ err: error }, 'Error toggling tool');
+    res.status(500).json({ message: 'Error toggling tool' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client Memories
+// ---------------------------------------------------------------------------
+router.get('/client-memories', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const memories = await ClientMemory.find()
+      .populate('userId', 'email')
+      .populate('botId', 'name')
+      .sort({ createdAt: -1 });
+    res.json({ memories });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching client memories');
+    res.status(500).json({ message: 'Error fetching client memories' });
+  }
+});
+
+router.get('/client-memories/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid memory ID' });
+      return;
+    }
+    const memory = await ClientMemory.findById(req.params.id)
+      .populate('userId', 'email')
+      .populate('botId', 'name');
+    if (!memory) {
+      res.status(404).json({ message: 'Memory not found' });
+      return;
+    }
+    res.json({ memory });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching client memory');
+    res.status(500).json({ message: 'Error fetching client memory' });
+  }
+});
+
+router.post('/client-memories', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId, botId, data } = req.body as { userId: string; botId: string; data?: Record<string, unknown> };
+    if (!userId || !isValidObjectId(userId)) {
+      res.status(400).json({ message: 'Valid userId is required' });
+      return;
+    }
+    if (!botId || !isValidObjectId(botId)) {
+      res.status(400).json({ message: 'Valid botId is required' });
+      return;
+    }
+    const sanitizedData: Record<string, unknown> = {};
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      if (JSON.stringify(data).length > 10_000) {
+        res.status(400).json({ message: 'Memory data exceeds 10 000 character limit' });
+        return;
+      }
+      Object.assign(sanitizedData, data);
+    }
+    const memory = new ClientMemory({ userId, botId, data: sanitizedData });
+    await memory.save();
+    await memory.populate('userId', 'email');
+    await memory.populate('botId', 'name');
+    log.info({ memoryId: memory._id, userId, botId }, 'Client memory created');
+    res.status(201).json({ memory, message: 'Client memory created successfully' });
+  } catch (error: any) {
+    if (error.code === 11000) {
+      res.status(409).json({ message: 'A memory entry for this user/bot combination already exists' });
+      return;
+    }
+    log.error({ err: error }, 'Error creating client memory');
+    res.status(500).json({ message: 'Error creating client memory' });
+  }
+});
+
+router.put('/client-memories/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid memory ID' });
+      return;
+    }
+    const { data } = req.body as { data: Record<string, unknown> };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      res.status(400).json({ message: 'data must be a plain object' });
+      return;
+    }
+    if (JSON.stringify(data).length > 10_000) {
+      res.status(400).json({ message: 'Memory data exceeds 10 000 character limit' });
+      return;
+    }
+    const memory = await ClientMemory.findByIdAndUpdate(
+      req.params.id,
+      { $set: { data } },
+      { new: true },
+    ).populate('userId', 'email').populate('botId', 'name');
+    if (!memory) {
+      res.status(404).json({ message: 'Memory not found' });
+      return;
+    }
+    log.info({ memoryId: req.params.id }, 'Client memory updated');
+    res.json({ memory, message: 'Client memory updated successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error updating client memory');
+    res.status(500).json({ message: 'Error updating client memory' });
+  }
+});
+
+router.delete('/client-memories/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid memory ID' });
+      return;
+    }
+    const memory = await ClientMemory.findByIdAndDelete(req.params.id);
+    if (!memory) {
+      res.status(404).json({ message: 'Memory not found' });
+      return;
+    }
+    log.info({ memoryId: req.params.id }, 'Client memory deleted');
+    res.json({ message: 'Client memory deleted successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting client memory');
+    res.status(500).json({ message: 'Error deleting client memory' });
   }
 });
 

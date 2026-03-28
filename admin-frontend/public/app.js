@@ -50,6 +50,101 @@ function replaceChildren(container, ...kids) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Markdown renderer (for LLM assistant output only)
+// ---------------------------------------------------------------------------
+
+/** HTML-escape a raw string to prevent injection. */
+function escHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Convert markdown text to safe HTML.
+ * Call ONLY on LLM assistant output — escHtml() is applied before any
+ * HTML is emitted, so injection via model output is not possible.
+ */
+function renderMarkdown(text) {
+  // Split on fenced code blocks so we can handle them separately
+  const segments = text.split(/(```[\w]*\n[\s\S]*?```|```[\s\S]*?```)/g);
+
+  return segments.map((seg, idx) => {
+    if (idx % 2 === 1) {
+      // Fenced code block — escape content, wrap in <pre><code>
+      const inner = seg.replace(/^```[\w]*\n?/, '').replace(/```$/, '');
+      return `<pre class="md-pre"><code>${escHtml(inner)}</code></pre>`;
+    }
+    // Normal segment — escape first, then apply markdown transforms
+    return mdProcessLines(escHtml(seg));
+  }).join('');
+}
+
+function mdProcessLines(s) {
+  const applyInline = (t) => t
+    // Bold before italic to avoid conflicts
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>')
+    // Inline code (content already HTML-escaped)
+    .replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>');
+
+  const lines = s.split('\n');
+  const out = [];
+  let inUl = false;
+  let inOl = false;
+
+  const closeList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  for (const line of lines) {
+    // Headings: # → <h4>, ## → <h5>, ### → <h6> (sized for chat context)
+    const hMatch = line.match(/^(#{1,3}) (.+)$/);
+    if (hMatch) {
+      closeList();
+      const level = hMatch[1].length + 3;
+      out.push(`<h${level} class="md-h mt-2 mb-1">${applyInline(hMatch[2])}</h${level}>`);
+      continue;
+    }
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      closeList();
+      out.push('<hr class="my-1">');
+      continue;
+    }
+    // Unordered list item
+    const ulMatch = line.match(/^[-*] (.+)$/);
+    if (ulMatch) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul class="mb-1 ps-3">'); inUl = true; }
+      out.push(`<li>${applyInline(ulMatch[1])}</li>`);
+      continue;
+    }
+    // Ordered list item
+    const olMatch = line.match(/^\d+\. (.+)$/);
+    if (olMatch) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol class="mb-1 ps-3">'); inOl = true; }
+      out.push(`<li>${applyInline(olMatch[1])}</li>`);
+      continue;
+    }
+    closeList();
+    if (line.trim() === '') {
+      out.push('<div class="md-gap"></div>');
+    } else {
+      out.push(`<span>${applyInline(line)}</span><br>`);
+    }
+  }
+  closeList();
+  return out.join('');
+}
+
 /** Fetch wrapper that auto-handles 401 (expired token). */
 async function apiFetch(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -177,6 +272,9 @@ function loadPage(page) {
     languages: loadLanguages,
     'user-groups': loadUserGroups,
     subscriptions: loadSubscriptions,
+    sessions: loadSessions,
+    tools: loadTools,
+    'client-memories': loadClientMemories,
     playground: loadPlayground,
   };
   (routes[page] || loadDashboard)();
@@ -254,10 +352,14 @@ async function loadUsers() {
     const tbody = el('tbody');
     data.users.forEach((user) => {
       const badgeClass = user.role === 'admin' ? 'bg-danger' : 'bg-secondary';
+      const lockBadge = user.isLocked
+        ? el('span', { className: 'badge bg-warning text-dark', textContent: 'Locked' })
+        : el('span', { className: 'badge bg-success', textContent: 'Active' });
       tbody.appendChild(
         el('tr', {}, [
           el('td', { textContent: user.email }),
           el('td', {}, [el('span', { className: `badge ${badgeClass}`, textContent: user.role })]),
+          el('td', {}, [lockBadge]),
           el('td', { textContent: user.languageCode || 'en-us' }),
           el('td', { textContent: new Date(user.createdAt).toLocaleDateString() }),
           el('td', {}, [
@@ -285,6 +387,7 @@ async function loadUsers() {
             el('tr', {}, [
               el('th', { textContent: 'Email' }),
               el('th', { textContent: 'Role' }),
+              el('th', { textContent: 'Status' }),
               el('th', { textContent: 'Language' }),
               el('th', { textContent: 'Created' }),
               el('th', { textContent: 'Actions' }),
@@ -345,6 +448,62 @@ async function editUser(user) {
     });
   } catch { /* ignore */ }
   subSelect.value = user.subscriptionId || '';
+
+  // Lock section
+  const lockStatusDiv = document.getElementById('userLockStatus');
+  const lockReasonGroup = document.getElementById('userLockReasonGroup');
+  const lockReasonInput = document.getElementById('userLockReason');
+  const toggleLockBtn = document.getElementById('toggleLockBtn');
+
+  lockStatusDiv.textContent = '';
+  if (user.isLocked) {
+    lockStatusDiv.appendChild(el('span', { className: 'badge bg-warning text-dark', textContent: 'Locked' }));
+    if (user.lockedAt) {
+      lockStatusDiv.appendChild(el('small', { className: 'ms-2 text-muted', textContent: `since ${new Date(user.lockedAt).toLocaleString()}` }));
+    }
+    if (user.lockedReason) {
+      lockStatusDiv.appendChild(el('div', { className: 'small text-muted mt-1', textContent: `Reason: ${user.lockedReason}` }));
+    }
+    lockReasonGroup.style.display = 'none';
+    toggleLockBtn.textContent = 'Unlock';
+    toggleLockBtn.className = 'btn btn-success btn-sm';
+  } else {
+    lockStatusDiv.appendChild(el('span', { className: 'badge bg-success', textContent: 'Active' }));
+    lockReasonGroup.style.display = 'block';
+    lockReasonInput.value = '';
+    toggleLockBtn.textContent = 'Lock';
+    toggleLockBtn.className = 'btn btn-warning btn-sm';
+  }
+
+  const lockBtn = toggleLockBtn;
+  lockBtn.replaceWith(lockBtn.cloneNode(true));
+  document.getElementById('toggleLockBtn').addEventListener('click', async () => {
+    if (user.isLocked) {
+      const res = await apiFetch(`/api/admin/users/${user._id}/unlock`, { method: 'POST' });
+      if (res.ok) {
+        const d = await res.json();
+        bsModal.hide();
+        loadUsers();
+        showAlert('success', d.message || 'User unlocked');
+      } else {
+        showAlert('danger', 'Error unlocking user');
+      }
+    } else {
+      const reason = document.getElementById('userLockReason').value.trim();
+      const res = await apiFetch(`/api/admin/users/${user._id}/lock`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        bsModal.hide();
+        loadUsers();
+        showAlert('success', d.message || 'User locked');
+      } else {
+        showAlert('danger', 'Error locking user');
+      }
+    }
+  });
 
   const saveBtn = document.getElementById('saveUser');
   const handler = async () => {
@@ -542,11 +701,15 @@ async function loadLlmConfigs() {
 
     const tbody = el('tbody');
     data.configs.forEach((config) => {
+      const toolsBadge = config.supportsTools
+        ? el('span', { className: 'badge bg-info', textContent: 'Yes' })
+        : el('span', { className: 'badge bg-secondary', textContent: 'No' });
       tbody.appendChild(
         el('tr', {}, [
           el('td', { textContent: config.name }),
           el('td', { textContent: config.provider }),
           el('td', { textContent: config.model || 'N/A' }),
+          el('td', {}, [toolsBadge]),
           el('td', {}, [
             el('button', {
               className: 'btn btn-sm btn-outline-primary me-1',
@@ -577,6 +740,7 @@ async function loadLlmConfigs() {
               el('th', { textContent: 'Name' }),
               el('th', { textContent: 'Provider' }),
               el('th', { textContent: 'Model' }),
+              el('th', { textContent: 'Tools' }),
               el('th', { textContent: 'Actions' }),
             ]),
           ]),
@@ -602,6 +766,7 @@ function showLlmConfigModal(config = null) {
   document.getElementById('llmConfigModel').value = config?.model || '';
   document.getElementById('llmConfigTemperature').value = config?.temperature ?? '';
   document.getElementById('llmConfigMaxTokens').value = config?.maxTokens ?? '';
+  document.getElementById('llmConfigSupportsTools').checked = config?.supportsTools || false;
 
   const saveBtn = document.getElementById('saveLlmConfig');
   saveBtn.replaceWith(saveBtn.cloneNode(true));
@@ -624,6 +789,7 @@ async function saveLlmConfig(configId, bsModal) {
   if (temp !== '') payload.temperature = parseFloat(temp);
   const maxTok = document.getElementById('llmConfigMaxTokens').value;
   if (maxTok !== '') payload.maxTokens = parseInt(maxTok, 10);
+  payload.supportsTools = document.getElementById('llmConfigSupportsTools').checked;
 
   if (!payload.name || !payload.provider) {
     showAlert('warning', 'Name and Provider are required');
@@ -1090,11 +1256,411 @@ async function deleteSubscription(subId) {
 }
 
 // ---------------------------------------------------------------------------
+// Sessions (admin — all users)
+// ---------------------------------------------------------------------------
+async function loadSessions() {
+  try {
+    const res = await apiFetch('/api/admin/sessions');
+    const data = await res.json();
+    if (!res.ok) {
+      replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading sessions' }));
+      return;
+    }
+
+    const tbody = el('tbody');
+    (data.sessions || []).forEach((s) => {
+      const userEmail = s.userId?.email || 'Unknown';
+      const botName = s.botId?.name || 'Unknown';
+      tbody.appendChild(
+        el('tr', {}, [
+          el('td', { textContent: userEmail }),
+          el('td', { textContent: botName }),
+          el('td', { textContent: s.title || '(untitled)' }),
+          el('td', { textContent: s.lockedLanguageCode || '' }),
+          el('td', { textContent: String(s.messageCount || 0) }),
+          el('td', { textContent: new Date(s.createdAt).toLocaleString() }),
+          el('td', {}, [
+            el('button', {
+              className: 'btn btn-sm btn-outline-primary me-1',
+              onClick: () => viewSessionMessages(s._id, `${userEmail} — ${botName}`),
+            }, [el('i', { className: 'fas fa-eye' }), ' View']),
+            el('button', {
+              className: 'btn btn-sm btn-outline-danger',
+              onClick: () => deleteSession(s._id),
+            }, [el('i', { className: 'fas fa-trash' }), ' Delete']),
+          ]),
+        ]),
+      );
+    });
+
+    replaceChildren(
+      contentDiv,
+      el('div', { className: 'd-flex justify-content-between align-items-center mb-3' }, [
+        el('h2', {}, [el('i', { className: 'fas fa-comments' }), ' Sessions']),
+      ]),
+      el('div', { className: 'table-responsive' }, [
+        el('table', { className: 'table table-striped' }, [
+          el('thead', {}, [
+            el('tr', {}, [
+              el('th', { textContent: 'User' }),
+              el('th', { textContent: 'Bot' }),
+              el('th', { textContent: 'Title' }),
+              el('th', { textContent: 'Language' }),
+              el('th', { textContent: 'Messages' }),
+              el('th', { textContent: 'Created' }),
+              el('th', { textContent: 'Actions' }),
+            ]),
+          ]),
+          tbody,
+        ]),
+      ]),
+    );
+  } catch (err) {
+    console.error('loadSessions error:', err);
+    replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading sessions' }));
+  }
+}
+
+async function viewSessionMessages(sessionId, title) {
+  try {
+    const res = await apiFetch(`/api/admin/sessions/${sessionId}/messages`);
+    const data = await res.json();
+    if (!res.ok) {
+      showAlert('danger', 'Error loading messages');
+      return;
+    }
+
+    const modal = document.getElementById('sessionMessagesModal');
+    const bsModal = new bootstrap.Modal(modal);
+    document.getElementById('sessionMessagesModalTitle').textContent = title || 'Session Messages';
+
+    const body = document.getElementById('sessionMessagesBody');
+    body.textContent = '';
+
+    if (!data.messages || data.messages.length === 0) {
+      body.appendChild(el('p', { className: 'text-muted', textContent: 'No messages in this session.' }));
+    } else {
+      data.messages.forEach((m) => {
+        const roleClass = m.role === 'user' ? 'bg-primary' : m.role === 'assistant' ? 'bg-success' : 'bg-secondary';
+        body.appendChild(
+          el('div', { className: 'mb-2' }, [
+            el('span', { className: `badge ${roleClass} me-2`, textContent: m.role }),
+            el('small', { className: 'text-muted', textContent: new Date(m.createdAt).toLocaleString() }),
+            el('div', { className: 'border rounded p-2 mt-1', style: 'white-space: pre-wrap;', textContent: m.content || '(empty)' }),
+          ]),
+        );
+      });
+    }
+
+    bsModal.show();
+  } catch (err) {
+    console.error('viewSessionMessages error:', err);
+    showAlert('danger', 'Error loading messages');
+  }
+}
+
+async function deleteSession(sessionId) {
+  if (!confirm('Are you sure you want to delete this session and all its messages?')) return;
+  try {
+    const res = await apiFetch(`/api/admin/sessions/${sessionId}`, { method: 'DELETE' });
+    if (res.ok) loadSessions();
+    else showAlert('danger', 'Error deleting session');
+  } catch {
+    showAlert('danger', 'Error deleting session');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+async function loadTools() {
+  try {
+    const res = await apiFetch('/api/admin/tools');
+    const data = await res.json();
+    if (!res.ok) {
+      replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading tools' }));
+      return;
+    }
+
+    const tbody = el('tbody');
+    (data.tools || []).forEach((tool) => {
+      const enabledBadge = tool.enabled
+        ? el('span', { className: 'badge bg-success', textContent: 'Enabled' })
+        : el('span', { className: 'badge bg-secondary', textContent: 'Disabled' });
+      const typeBadge = el('span', { className: 'badge bg-info', textContent: tool.type });
+      const desc = (tool.description || '').length > 60
+        ? tool.description.slice(0, 60) + '...'
+        : tool.description || '';
+      tbody.appendChild(
+        el('tr', {}, [
+          el('td', { textContent: tool.displayName }),
+          el('td', {}, [typeBadge]),
+          el('td', { textContent: desc }),
+          el('td', {}, [enabledBadge]),
+          el('td', {}, [
+            el('button', {
+              className: 'btn btn-sm btn-outline-primary me-1',
+              onClick: () => showToolModal(tool),
+            }, [el('i', { className: 'fas fa-edit' }), ' Edit']),
+            el('button', {
+              className: `btn btn-sm me-1 ${tool.enabled ? 'btn-outline-warning' : 'btn-outline-success'}`,
+              onClick: () => toggleTool(tool._id),
+            }, [el('i', { className: `fas ${tool.enabled ? 'fa-pause' : 'fa-play'}` }), tool.enabled ? ' Disable' : ' Enable']),
+            el('button', {
+              className: 'btn btn-sm btn-outline-danger',
+              onClick: () => deleteTool(tool._id),
+            }, [el('i', { className: 'fas fa-trash' }), ' Delete']),
+          ]),
+        ]),
+      );
+    });
+
+    replaceChildren(
+      contentDiv,
+      el('div', { className: 'd-flex justify-content-between align-items-center mb-3' }, [
+        el('h2', {}, [el('i', { className: 'fas fa-wrench' }), ' Tools']),
+        el('button', {
+          className: 'btn btn-primary',
+          onClick: () => showToolModal(),
+        }, [el('i', { className: 'fas fa-plus' }), ' Add Tool']),
+      ]),
+      el('div', { className: 'table-responsive' }, [
+        el('table', { className: 'table table-striped' }, [
+          el('thead', {}, [
+            el('tr', {}, [
+              el('th', { textContent: 'Display Name' }),
+              el('th', { textContent: 'Type' }),
+              el('th', { textContent: 'Description' }),
+              el('th', { textContent: 'Status' }),
+              el('th', { textContent: 'Actions' }),
+            ]),
+          ]),
+          tbody,
+        ]),
+      ]),
+    );
+  } catch (err) {
+    console.error('loadTools error:', err);
+    replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading tools' }));
+  }
+}
+
+function showToolModal(tool = null) {
+  const modal = document.getElementById('toolModal');
+  const bsModal = new bootstrap.Modal(modal);
+
+  document.getElementById('toolModalTitle').textContent = tool ? 'Edit Tool' : 'Add New Tool';
+  document.getElementById('toolName').value = tool?.name || '';
+  document.getElementById('toolDisplayName').value = tool?.displayName || '';
+  document.getElementById('toolDescription').value = tool?.description || '';
+  document.getElementById('toolType').value = tool?.type || 'wikipedia';
+  document.getElementById('toolEnabled').checked = tool?.enabled || false;
+  document.getElementById('toolConfigMaxResults').value = tool?.config?.maxResults ?? 3;
+  document.getElementById('toolConfigLanguage').value = tool?.config?.language || 'en';
+
+  // Show/hide Wikipedia-specific config section based on type
+  const updateWikiSection = () => {
+    const isWiki = document.getElementById('toolType').value === 'wikipedia';
+    document.getElementById('toolWikipediaConfig').style.display = isWiki ? '' : 'none';
+  };
+  updateWikiSection();
+  const toolTypeEl = document.getElementById('toolType');
+  toolTypeEl.replaceWith(toolTypeEl.cloneNode(true)); // remove old listeners
+  document.getElementById('toolType').addEventListener('change', updateWikiSection);
+
+  const saveBtn = document.getElementById('saveTool');
+  saveBtn.replaceWith(saveBtn.cloneNode(true));
+  document.getElementById('saveTool').addEventListener('click', () =>
+    saveTool(tool?._id, bsModal),
+  );
+  bsModal.show();
+}
+
+async function saveTool(toolId, bsModal) {
+  const payload = {
+    name: document.getElementById('toolName').value.trim(),
+    displayName: document.getElementById('toolDisplayName').value.trim(),
+    description: document.getElementById('toolDescription').value.trim(),
+    type: document.getElementById('toolType').value,
+    enabled: document.getElementById('toolEnabled').checked,
+    config: {},
+  };
+  const maxResults = document.getElementById('toolConfigMaxResults').value;
+  if (maxResults !== '') payload.config.maxResults = parseInt(maxResults, 10);
+  const language = document.getElementById('toolConfigLanguage').value.trim();
+  if (language) payload.config.language = language;
+
+  if (!payload.name || !payload.displayName || !payload.description) {
+    showAlert('warning', 'Name, Display Name, and Description are required');
+    return;
+  }
+
+  try {
+    const url = toolId ? `/api/admin/tools/${toolId}` : '/api/admin/tools';
+    const method = toolId ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, body: JSON.stringify(payload) });
+    if (res.ok) {
+      bsModal.hide();
+      loadTools();
+    } else {
+      const d = await res.json();
+      showAlert('danger', d.message || 'Error saving tool');
+    }
+  } catch {
+    showAlert('danger', 'Error saving tool');
+  }
+}
+
+async function toggleTool(toolId) {
+  try {
+    const res = await apiFetch(`/api/admin/tools/${toolId}/toggle`, { method: 'POST' });
+    if (res.ok) loadTools();
+    else showAlert('danger', 'Error toggling tool');
+  } catch {
+    showAlert('danger', 'Error toggling tool');
+  }
+}
+
+async function deleteTool(toolId) {
+  if (!confirm('Are you sure you want to delete this tool?')) return;
+  try {
+    const res = await apiFetch(`/api/admin/tools/${toolId}`, { method: 'DELETE' });
+    if (res.ok) loadTools();
+    else showAlert('danger', 'Error deleting tool');
+  } catch {
+    showAlert('danger', 'Error deleting tool');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Client Memories
+// ---------------------------------------------------------------------------
+async function loadClientMemories() {
+  try {
+    const res = await apiFetch('/api/admin/client-memories');
+    const data = await res.json();
+    if (!res.ok) {
+      replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading client memories' }));
+      return;
+    }
+
+    const tbody = el('tbody');
+    (data.memories || []).forEach((mem) => {
+      const userEmail = mem.userId?.email || mem.userId || '—';
+      const botName = mem.botId?.name || mem.botId || '—';
+      const keys = Object.keys(mem.data || {});
+      const preview = keys.length === 0 ? el('em', { textContent: 'empty' }) : el('span', { textContent: keys.slice(0, 4).join(', ') + (keys.length > 4 ? ` +${keys.length - 4} more` : '') });
+      tbody.appendChild(
+        el('tr', {}, [
+          el('td', { textContent: userEmail }),
+          el('td', { textContent: botName }),
+          el('td', {}, [preview]),
+          el('td', {}, [
+            el('button', {
+              className: 'btn btn-sm btn-outline-primary me-1',
+              onClick: () => showClientMemoryModal(mem),
+            }, [el('i', { className: 'fas fa-edit' }), ' Edit']),
+            el('button', {
+              className: 'btn btn-sm btn-outline-danger',
+              onClick: () => deleteClientMemory(mem._id),
+            }, [el('i', { className: 'fas fa-trash' }), ' Delete']),
+          ]),
+        ]),
+      );
+    });
+
+    replaceChildren(
+      contentDiv,
+      el('div', { className: 'd-flex justify-content-between align-items-center mb-3' }, [
+        el('h2', {}, [el('i', { className: 'fas fa-brain' }), ' Client Memories']),
+      ]),
+      (data.memories || []).length === 0
+        ? el('div', { className: 'alert alert-info', textContent: 'No client memory entries yet. They are created automatically when a bot uses the Client Memory tool.' })
+        : el('div', { className: 'table-responsive' }, [
+            el('table', { className: 'table table-striped' }, [
+              el('thead', {}, [
+                el('tr', {}, [
+                  el('th', { textContent: 'User' }),
+                  el('th', { textContent: 'Bot' }),
+                  el('th', { textContent: 'Stored Keys' }),
+                  el('th', { textContent: 'Actions' }),
+                ]),
+              ]),
+              tbody,
+            ]),
+          ]),
+    );
+  } catch (err) {
+    console.error('loadClientMemories error:', err);
+    replaceChildren(contentDiv, el('div', { className: 'alert alert-danger', textContent: 'Error loading client memories' }));
+  }
+}
+
+function showClientMemoryModal(mem) {
+  const modal = document.getElementById('clientMemoryModal');
+  const bsModal = new bootstrap.Modal(modal);
+
+  document.getElementById('clientMemoryModalTitle').textContent = 'Edit Client Memory';
+  document.getElementById('cmUserEmail').value = mem.userId?.email || String(mem.userId) || '';
+  document.getElementById('cmBotName').value = mem.botId?.name || String(mem.botId) || '';
+  document.getElementById('cmData').value = JSON.stringify(mem.data || {}, null, 2);
+
+  const saveBtn = document.getElementById('saveClientMemory');
+  saveBtn.replaceWith(saveBtn.cloneNode(true));
+  document.getElementById('saveClientMemory').addEventListener('click', () =>
+    saveClientMemory(mem._id, bsModal),
+  );
+  bsModal.show();
+}
+
+async function saveClientMemory(memId, bsModal) {
+  const raw = document.getElementById('cmData').value.trim();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    showAlert('warning', 'Memory data must be valid JSON');
+    return;
+  }
+  if (typeof data !== 'object' || Array.isArray(data)) {
+    showAlert('warning', 'Memory data must be a JSON object (not an array)');
+    return;
+  }
+  try {
+    const res = await apiFetch(`/api/admin/client-memories/${memId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ data }),
+    });
+    if (res.ok) {
+      bsModal.hide();
+      loadClientMemories();
+    } else {
+      const d = await res.json();
+      showAlert('danger', d.message || 'Error saving memory');
+    }
+  } catch {
+    showAlert('danger', 'Error saving memory');
+  }
+}
+
+async function deleteClientMemory(memId) {
+  if (!confirm('Delete this memory entry? The bot will no longer remember anything about this user.')) return;
+  try {
+    const res = await apiFetch(`/api/admin/client-memories/${memId}`, { method: 'DELETE' });
+    if (res.ok) loadClientMemories();
+    else showAlert('danger', 'Error deleting memory');
+  } catch {
+    showAlert('danger', 'Error deleting memory');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Playground
 // ---------------------------------------------------------------------------
 let playgroundSessionId = null;
 let playgroundSocket = null;
 let playgroundStreamingBubble = null;
+let playgroundStreamingRaw = '';
 
 /** Disconnect and reset playground socket/session state. */
 function resetPlayground() {
@@ -1104,6 +1670,7 @@ function resetPlayground() {
   }
   playgroundSessionId = null;
   playgroundStreamingBubble = null;
+  playgroundStreamingRaw = '';
 }
 
 /** Append a chat bubble to the playground chat area. */
@@ -1112,7 +1679,7 @@ function appendPlaygroundBubble(area, role, text, streaming) {
   const wrapper = el('div', { className: `d-flex mb-2 ${isUser ? 'justify-content-end' : 'justify-content-start'}` });
   const bubble = el('div', {
     className: `px-3 py-2 rounded-3 ${isUser ? 'bg-primary text-white' : 'bg-light border'}`,
-    style: 'max-width:75%;white-space:pre-wrap',
+    style: isUser ? 'max-width:75%;white-space:pre-wrap' : 'max-width:75%;word-break:break-word',
   });
   if (streaming) {
     const spinner = el('span', { className: 'spinner-grow spinner-grow-sm me-1' });
@@ -1271,14 +1838,21 @@ async function startPlaygroundSession() {
       const area = document.getElementById('playgroundChatArea');
       if (!area) return;
       if (!playgroundStreamingBubble) {
+        playgroundStreamingRaw = '';
         playgroundStreamingBubble = appendPlaygroundBubble(area, 'assistant', '', true);
       }
-      playgroundStreamingBubble.textContent += token;
+      playgroundStreamingRaw += token;
+      playgroundStreamingBubble.textContent = playgroundStreamingRaw;
       area.scrollTop = area.scrollHeight;
     });
 
     playgroundSocket.on('chat:done', () => {
+      // Render the fully accumulated response as markdown
+      if (playgroundStreamingBubble && playgroundStreamingRaw) {
+        playgroundStreamingBubble.innerHTML = renderMarkdown(playgroundStreamingRaw);
+      }
       playgroundStreamingBubble = null;
+      playgroundStreamingRaw = '';
       const msgInput = document.getElementById('playgroundMessage');
       const sendBtn = document.getElementById('sendMsgBtn');
       if (msgInput) msgInput.disabled = false;
@@ -1320,6 +1894,7 @@ async function sendMessageToBot() {
   const sendBtn = document.getElementById('sendMsgBtn');
   if (sendBtn) sendBtn.disabled = true;
   playgroundStreamingBubble = null;
+  playgroundStreamingRaw = '';
 
   const area = document.getElementById('playgroundChatArea');
   appendPlaygroundBubble(area, 'user', message, false);

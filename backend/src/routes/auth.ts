@@ -128,6 +128,12 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
       return;
     }
 
+    if (user.isLocked) {
+      log.debug({ email: normalizedEmail, userId: user._id }, 'Login failed: account locked');
+      res.status(423).json({ error: 'account_locked' });
+      return;
+    }
+
     if (!JWT_SECRET) {
       log.debug('Login failed: JWT_SECRET is empty or missing');
       res.status(500).json({ message: 'Server configuration error' });

@@ -43,6 +43,13 @@ export const authenticateToken = async (
     }
 
     req.user = user as IUser;
+
+    if (user.isLocked) {
+      log.debug({ userId: decoded.userId }, 'Access denied: account locked');
+      res.status(423).json({ error: 'account_locked' });
+      return;
+    }
+
     next();
   } catch {
     log.debug('Token verification failed');

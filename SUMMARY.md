@@ -59,7 +59,7 @@ I have successfully implemented a complete philosophical chatbot platform with b
 - `admin-frontend/index.html` - Main admin interface
 - `admin-frontend/app.js` - Admin interface JavaScript logic
 - `admin-frontend/styles.css` - Custom admin styling
-- `src/scripts/initAdminUser.js` - Script to create default admin user
+- `src/scripts/initDefaultData.ts` - Single script to seed all initial data (admin user, languages, bots, tools, system prompt)
 - `package.json` - Added admin server and initialization scripts
 - `.env` - Environment configuration file
 

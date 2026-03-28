@@ -11,6 +11,7 @@ export interface ILLMConfig {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  supportsTools: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +32,7 @@ const llmConfigSchema = new Schema<ILLMConfig>(
     topP: { type: Number, min: 0, max: 1 },
     frequencyPenalty: { type: Number, min: -2, max: 2 },
     presencePenalty: { type: Number, min: -2, max: 2 },
+    supportsTools: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

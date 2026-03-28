@@ -20,6 +20,11 @@ APP_COLLECTIONS=(
   profiles
   chatsessions
   llmconfigs
+  languages
+  usergroups
+  subscriptions
+  botlocales
+  tools
 )
 
 build_collection_array_js() {
@@ -103,6 +108,7 @@ purge_schema_local() {
   js_collections="$(build_collection_array_js)"
   echo "[mongo] purging app collections in '$MONGO_DB' (local mongod)"
   mongosh --quiet --host 127.0.0.1 --port 27017 --eval "const dbName='${MONGO_DB}'; const keep=${js_collections}; const d=db.getSiblingDB(dbName); const existing=new Set(d.getCollectionNames()); for (const name of keep) { if (existing.has(name)) { d.getCollection(name).drop(); print('dropped:' + name); } }" | sed 's/^/[mongo] /'
+  print_remaining_non_empty_collections_local
 }
 
 purge_schema_docker() {
@@ -110,6 +116,17 @@ purge_schema_docker() {
   js_collections="$(build_collection_array_js)"
   echo "[mongo] purging app collections in '$MONGO_DB' (docker mongod)"
   docker exec "$MONGO_CONTAINER" mongosh --quiet --eval "const dbName='${MONGO_DB}'; const keep=${js_collections}; const d=db.getSiblingDB(dbName); const existing=new Set(d.getCollectionNames()); for (const name of keep) { if (existing.has(name)) { d.getCollection(name).drop(); print('dropped:' + name); } }" | sed 's/^/[mongo] /'
+  print_remaining_non_empty_collections_docker
+}
+
+print_remaining_non_empty_collections_local() {
+  echo "[mongo] checking for remaining non-empty collections after purge (local mongod)"
+  mongosh --quiet --host 127.0.0.1 --port 27017 --eval "const dbName='${MONGO_DB}'; const d=db.getSiblingDB(dbName); const names=d.getCollectionNames().filter(n => !n.startsWith('system.')); const nonEmpty=[]; for (const n of names) { if (d.getCollection(n).findOne() !== null) nonEmpty.push(n); } if (nonEmpty.length===0) { print('none'); } else { print(nonEmpty.join(',')); }" | sed 's/^/[mongo] remaining: /'
+}
+
+print_remaining_non_empty_collections_docker() {
+  echo "[mongo] checking for remaining non-empty collections after purge (docker mongod)"
+  docker exec "$MONGO_CONTAINER" mongosh --quiet --eval "const dbName='${MONGO_DB}'; const d=db.getSiblingDB(dbName); const names=d.getCollectionNames().filter(n => !n.startsWith('system.')); const nonEmpty=[]; for (const n of names) { if (d.getCollection(n).findOne() !== null) nonEmpty.push(n); } if (nonEmpty.length===0) { print('none'); } else { print(nonEmpty.join(',')); }" | sed 's/^/[mongo] remaining: /'
 }
 
 mongo_db_has_data_local() {
@@ -173,7 +190,11 @@ seed_initial_data() {
       echo "[mongo] installing backend dependencies for seed"
       npm install
     fi
-    MONGODB_URI="$seed_uri" LOG_LEVEL="${LOG_LEVEL:-info}" npx ts-node src/scripts/initDefaultData.ts
+    local force_seed="false"
+    if $PURGE; then
+      force_seed="true"
+    fi
+    MONGODB_URI="$seed_uri" LOG_LEVEL="${LOG_LEVEL:-info}" FORCE_DEMO_SEED="$force_seed" npx ts-node src/scripts/initDefaultData.ts
   )
   echo "[mongo] initial data load complete"
 }

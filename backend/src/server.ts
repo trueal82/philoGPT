@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import passport from './config/passport';
 import logger from './config/logger';
-import { ensureDefaultSystemPrompt } from './models/SystemPrompt';
+import SystemPrompt from './models/SystemPrompt';
 import { ensureDemoDataIfDatabaseEmpty } from './scripts/initDefaultData';
 import authRoutes from './routes/auth';
 import botRoutes from './routes/bots';
@@ -23,6 +23,7 @@ import ChatSession from './models/ChatSession';
 import Message from './models/Message';
 import { streamLLMResponse, ChatMessage } from './services/llmService';
 import { resolveLocale, buildSystemMessage } from './services/promptLocalizationService';
+import { getEnabledTools, buildOllamaToolDefinitions, executeTool } from './services/toolService';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -79,6 +80,9 @@ io.use(async (socket, next) => {
     const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
       return next(new Error('User not found'));
+    }
+    if (user.isLocked) {
+      return next(new Error('account_locked'));
     }
     socket.data.user = user as IUser;
     next();
@@ -149,11 +153,47 @@ io.on('connection', (socket) => {
       // Resolve localized prompt using session's locked language
       const lockedLang = (session as any).lockedLanguageCode || 'en-us';
       const resolved = await resolveLocale(bot as any, lockedLang);
-      const systemMessage = buildSystemMessage(resolved, lockedLang);
+
+      // --- Fetch enabled tools BEFORE building system message so memory hint can be injected ---
+      const llmConfig = bot.llmConfigId as unknown as import('./models/LLMConfig').ILLMConfig;
+      let toolDefs = undefined;
+      let enabledToolsList: Awaited<ReturnType<typeof getEnabledTools>> = [];
+      if (llmConfig.supportsTools) {
+        enabledToolsList = await getEnabledTools();
+        if (enabledToolsList.length > 0) {
+          toolDefs = buildOllamaToolDefinitions(enabledToolsList);
+        }
+      }
+
+      // --- Build system message: global prompt + bot-specific prompt ---
+      const globalPrompt = await SystemPrompt.findOne({ isActive: true }).lean();
+      let systemMessage = '';
+      if (globalPrompt?.content) {
+        systemMessage += globalPrompt.content + '\n\n';
+      }
+      systemMessage += buildSystemMessage(resolved, lockedLang);
 
       const contextMessages: ChatMessage[] = [
         { role: 'system', content: systemMessage },
-        ...history.map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+        ...history.map((m) => {
+          const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content };
+          // Replay tool_calls on assistant messages so Ollama sees the full tool conversation
+          const meta = m.metadata as Map<string, unknown> | undefined;
+          if (msg.role === 'assistant' && meta) {
+            const tc = meta instanceof Map ? meta.get('tool_calls') : (meta as any)?.tool_calls;
+            if (Array.isArray(tc) && tc.length > 0) {
+              msg.tool_calls = tc as ChatMessage['tool_calls'];
+            }
+          }
+          // Replay tool_name on tool messages
+          if (msg.role === 'tool' && meta) {
+            const tn = meta instanceof Map ? meta.get('tool_name') : (meta as any)?.tool_name;
+            if (typeof tn === 'string') {
+              msg.tool_name = tn;
+            }
+          }
+          return msg;
+        }),
       ];
 
       socketLog.debug({
@@ -163,16 +203,85 @@ io.on('connection', (socket) => {
         fallbackUsed: resolved.fallbackUsed,
       }, 'Starting LLM stream');
 
-      // --- Stream LLM response ---
       let fullResponse = '';
+      const MAX_TOOL_ROUNDS = 5;
       try {
-        fullResponse = await streamLLMResponse(
-          bot.llmConfigId as unknown as import('./models/LLMConfig').ILLMConfig,
+        const botIdStr = String((session.botId as any)?._id ?? session.botId ?? '');
+        const userIdStr = String((user as IUser & { _id: Types.ObjectId })._id);
+        const wikiLang = lockedLang.split('-')[0];
+
+        let result = await streamLLMResponse(
+          llmConfig,
           contextMessages,
           async (token) => {
             socket.emit('chat:token', { sessionId, token });
           },
+          toolDefs,
         );
+
+        let toolRound = 0;
+        while (result.type === 'tool_calls' && toolRound < MAX_TOOL_ROUNDS) {
+          toolRound++;
+          socketLog.debug({ round: toolRound, callCount: result.calls.length }, 'Tool-call round');
+
+          for (const call of result.calls) {
+            const toolName = call.function.name;
+            const toolParams = call.function.arguments;
+            socketLog.debug({ toolName, toolParams }, 'Executing tool call');
+
+            const toolResult = await executeTool(
+              toolName,
+              toolParams,
+              { language: wikiLang },
+              { userId: userIdStr, botId: botIdStr },
+            );
+
+            // Persist tool-call assistant message
+            await new Message({
+              sessionId,
+              role: 'assistant',
+              content: '[tool_call]',
+              metadata: { tool_calls: [call] },
+            }).save();
+
+            // Persist tool result message
+            await new Message({
+              sessionId,
+              role: 'tool',
+              content: toolResult,
+              metadata: { tool_name: toolName, tool_result: true },
+            }).save();
+
+            // Add to context: assistant with tool_calls, then tool result
+            contextMessages.push({ role: 'assistant', content: '', tool_calls: [call] });
+            contextMessages.push({ role: 'tool', content: toolResult, tool_name: toolName });
+          }
+
+          // Re-call with the extended history — keep tools so model can chain calls
+          result = await streamLLMResponse(
+            llmConfig,
+            contextMessages,
+            async (token) => {
+              socket.emit('chat:token', { sessionId, token });
+            },
+            toolDefs,
+          );
+        }
+
+        fullResponse = result.type === 'response' ? result.content : '';
+
+        // Fallback: if still empty after tool loop, retry without tools
+        if (fullResponse === '' && toolDefs) {
+          socketLog.warn('LLM returned empty response after tool loop; retrying without tools');
+          const retry = await streamLLMResponse(
+            llmConfig,
+            contextMessages,
+            async (token) => {
+              socket.emit('chat:token', { sessionId, token });
+            },
+          );
+          fullResponse = retry.type === 'response' ? retry.content : '';
+        }
       } catch (llmErr) {
         socketLog.error({ err: llmErr }, 'LLM streaming error');
         socket.emit('chat:error', { sessionId, error: (llmErr as Error).message });
@@ -241,8 +350,6 @@ mongoose
   .connect(MONGODB_URI)
   .then(async () => {
     log.info('Connected to MongoDB');
-    await ensureDefaultSystemPrompt();
-    log.debug('Default system prompt ensured');
 
     if (process.env.SEED_DEMO_DATA !== 'false') {
       const seeded = await ensureDemoDataIfDatabaseEmpty();

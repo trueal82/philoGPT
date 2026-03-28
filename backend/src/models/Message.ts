@@ -2,7 +2,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IMessage extends Document {
   sessionId: Types.ObjectId;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   metadata?: Map<string, unknown>;
   createdAt: Date;
@@ -14,10 +14,10 @@ const messageSchema = new Schema<IMessage>(
     sessionId: { type: Schema.Types.ObjectId, ref: 'ChatSession', required: true, index: true },
     role: {
       type: String,
-      enum: ['user', 'assistant', 'system'],
+      enum: ['user', 'assistant', 'system', 'tool'],
       required: true,
     },
-    content: { type: String, required: true, maxlength: 50000 },
+    content: { type: String, default: '', maxlength: 50000 },
     metadata: { type: Map, of: Schema.Types.Mixed },
   },
   { timestamps: true },
