@@ -23,7 +23,7 @@ import ChatSession from './models/ChatSession';
 import Message from './models/Message';
 import { streamLLMResponse, ChatMessage } from './services/llmService';
 import { resolveLocale, buildSystemMessage } from './services/promptLocalizationService';
-import { getEnabledTools, buildOllamaToolDefinitions, executeTool } from './services/toolService';
+import { getEnabledTools, buildOllamaToolDefinitions, executeTool, getClientMemoryKeys } from './services/toolService';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -126,6 +126,8 @@ io.on('connection', (socket) => {
       }
 
       const bot = session.botId as unknown as (typeof Bot.prototype & { llmConfigId?: typeof LLMConfig.prototype });
+      const botIdStr = String((session.botId as any)?._id ?? session.botId ?? '');
+      const userIdStr = String((user as IUser & { _id: Types.ObjectId })._id);
 
       // --- Persist user message ---
       const userMessage = new Message({
@@ -149,6 +151,7 @@ io.on('connection', (socket) => {
         .limit(20)
         .lean();
       history.reverse();
+      const isFirstUserMessageInSession = history.length === 1 && history[0]?.role === 'user';
 
       // Resolve localized prompt using session's locked language
       const lockedLang = (session as any).lockedLanguageCode || 'en-us';
@@ -172,6 +175,22 @@ io.on('connection', (socket) => {
         systemMessage += globalPrompt.content + '\n\n';
       }
       systemMessage += buildSystemMessage(resolved, lockedLang);
+
+      if (isFirstUserMessageInSession) {
+        const memoryKeys = await getClientMemoryKeys(userIdStr, botIdStr);
+        const memoryKeyLines = memoryKeys.length > 0
+          ? memoryKeys.map((key) => `- ${key}`).join('\n')
+          : '- (no stored keys yet)';
+
+        systemMessage += [
+          '',
+          'CLIENT MEMORY KEY INDEX FOR THIS USER/BOT:',
+          'Use these exact key names when deciding what to read/update via client_memory.',
+          memoryKeyLines,
+        ].join('\n');
+
+        socketLog.debug({ memoryKeyCount: memoryKeys.length }, 'Injected memory key index into first-turn system prompt');
+      }
 
       const contextMessages: ChatMessage[] = [
         { role: 'system', content: systemMessage },
@@ -206,8 +225,6 @@ io.on('connection', (socket) => {
       let fullResponse = '';
       const MAX_TOOL_ROUNDS = 5;
       try {
-        const botIdStr = String((session.botId as any)?._id ?? session.botId ?? '');
-        const userIdStr = String((user as IUser & { _id: Types.ObjectId })._id);
         const wikiLang = lockedLang.split('-')[0];
 
         let result = await streamLLMResponse(

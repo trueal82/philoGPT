@@ -55,6 +55,23 @@ export function buildOllamaToolDefinitions(tools: ITool[]): OllamaToolDefinition
   }));
 }
 
+export async function getClientMemoryKeys(
+  userId: string,
+  botId: string,
+): Promise<string[]> {
+  if (!userId || !botId) {
+    return [];
+  }
+
+  const record = await ClientMemory.findOne({ userId, botId }).lean();
+  const data = record?.data ?? {};
+  if (typeof data !== 'object' || data === null) {
+    return [];
+  }
+
+  return Object.keys(data).sort((a, b) => a.localeCompare(b));
+}
+
 export async function executeTool(
   toolName: string,
   params: Record<string, unknown>,
