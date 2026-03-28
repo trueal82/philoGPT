@@ -1,3 +1,10 @@
+/**
+ * openai.ts — OpenAI LLM provider stub.
+ *
+ * Not yet implemented — throws an error directing the user to configure
+ * an Ollama LLM config instead.
+ */
+
 import { ILLMConfig } from '../../models/LLMConfig';
 import { OllamaToolDefinition } from '../toolService';
 import { ChatMessage, ILLMProvider, LLMResult } from './types';

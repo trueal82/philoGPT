@@ -1,3 +1,4 @@
+/** SystemPrompt.ts — Global system prompt injected into every LLM conversation. */
 import mongoose, { Document, Schema, Model } from 'mongoose';
 import { createLogger } from '../config/logger';
 

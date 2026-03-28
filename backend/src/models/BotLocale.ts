@@ -1,3 +1,4 @@
+/** BotLocale.ts — Per-language overrides for bot name, description, personality, and system prompt. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBotLocale extends Document {

@@ -1,3 +1,4 @@
+/** Subscription.ts — Subscription tiers with feature flags. */
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ISubscription extends Document {

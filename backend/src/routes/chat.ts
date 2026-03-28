@@ -1,3 +1,12 @@
+/**
+ * chat.ts — Chat session & client memory routes.
+ *
+ * Sessions: list, create, get messages, post message, delete.
+ * Client Memory: read per-bot, list all, delete key, delete all.
+ *
+ * All routes require authentication; users can only access their own data.
+ */
+
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import ChatSession from '../models/ChatSession';

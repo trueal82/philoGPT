@@ -1,3 +1,4 @@
+/** UserGroup.ts — Named user groups for organization and access control. */
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IUserGroup extends Document {

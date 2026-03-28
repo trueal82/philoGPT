@@ -1,3 +1,4 @@
+/** playground.ts — Admin prompt playground routes for testing bot configurations. */
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Bot from '../models/Bot';

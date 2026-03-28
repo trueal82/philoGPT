@@ -1,3 +1,4 @@
+/** User.ts — User account with bcrypt password hashing, role, lock status, and group/subscription refs. */
 import mongoose, { Document, Schema, Model, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 

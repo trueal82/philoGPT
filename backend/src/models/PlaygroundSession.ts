@@ -1,3 +1,4 @@
+/** PlaygroundSession.ts — Ephemeral prompt-testing sessions used by the admin playground. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IPlaygroundSession extends Document {

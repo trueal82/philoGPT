@@ -1,3 +1,15 @@
+/**
+ * toolService.ts — Tool definitions, execution, and client memory management.
+ *
+ * Provides:
+ *  - `getEnabledTools` / `buildOllamaToolDefinitions` — discover active tools
+ *    and convert them to the tool-call schema expected by LLM providers.
+ *  - `executeTool` — dispatcher that runs the appropriate handler (Wikipedia,
+ *    client memory, etc.) and returns a plain-text result for the LLM.
+ *  - `getClientMemoryKeys` — returns the stored key names for a user/bot pair
+ *    so they can be injected into the system prompt.
+ */
+
 import Tool, { ITool } from '../models/Tool';
 import ClientMemory from '../models/ClientMemory';
 import { createLogger } from '../config/logger';
@@ -36,10 +48,12 @@ const TOOL_PARAM_MAP: Record<string, OllamaToolDefinition['function']['parameter
   },
 };
 
+/** Fetch all tools that are currently enabled in the database. */
 export async function getEnabledTools(): Promise<ITool[]> {
   return Tool.find({ enabled: true }).lean();
 }
 
+/** Convert enabled `ITool` documents into the Ollama function-call schema. */
 export function buildOllamaToolDefinitions(tools: ITool[]): OllamaToolDefinition[] {
   return tools.map((tool) => ({
     type: 'function',
@@ -55,6 +69,11 @@ export function buildOllamaToolDefinitions(tools: ITool[]): OllamaToolDefinition
   }));
 }
 
+/**
+ * Return sorted list of stored memory keys for a user/bot pair.
+ * Used to inject the key index into the system prompt so the LLM knows
+ * what data is already persisted.
+ */
 export async function getClientMemoryKeys(
   userId: string,
   botId: string,
@@ -72,6 +91,10 @@ export async function getClientMemoryKeys(
   return Object.keys(data).sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Dispatch execution to the correct tool handler based on name/type.
+ * Returns a plain-text result string suitable for injection into LLM context.
+ */
 export async function executeTool(
   toolName: string,
   params: Record<string, unknown>,

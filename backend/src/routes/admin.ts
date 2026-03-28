@@ -1,3 +1,11 @@
+/**
+ * admin.ts — Admin-only REST routes.
+ *
+ * All endpoints require `authenticateToken` + `requireAdmin` middleware.
+ * Covers CRUD for: Users, LLM Configs, System Prompt, Bots, Languages,
+ * User Groups, Subscriptions, Bot Locales, Sessions, Tools, Client Memories.
+ */
+
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import User from '../models/User';

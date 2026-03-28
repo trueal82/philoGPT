@@ -1,3 +1,4 @@
+/** Profile.ts — Extended user profile data (display name, bio, avatar URL, etc.). */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IProfile extends Document {

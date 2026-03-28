@@ -1,3 +1,4 @@
+/** ClientMemory.ts — Key-value memory store per user-bot pair, managed by the client_memory tool. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IClientMemory extends Document {

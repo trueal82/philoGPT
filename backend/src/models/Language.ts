@@ -1,3 +1,4 @@
+/** Language.ts — Supported languages with activation flag and sort order. */
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ILanguage extends Document {

@@ -1,3 +1,4 @@
+/** LLMConfig.ts — LLM provider configuration (model, API URL, temperature, tool support, etc.). */
 import mongoose, { Schema } from 'mongoose';
 
 export interface ILLMConfig {

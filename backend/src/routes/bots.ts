@@ -1,3 +1,13 @@
+/**
+ * bots.ts — Bot CRUD routes.
+ *
+ * - GET  / — list bots visible to the authenticated user (subscription-filtered)
+ * - GET  /:id — single bot detail
+ * - POST / — create (admin only)
+ * - PUT  /:id — update (admin only)
+ * - DELETE /:id — delete (admin only)
+ */
+
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Bot from '../models/Bot';

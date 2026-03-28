@@ -1,3 +1,4 @@
+/** Message.ts — Individual chat message within a session (user, assistant, system, or tool). */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IMessage extends Document {

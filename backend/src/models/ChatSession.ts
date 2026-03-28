@@ -1,3 +1,4 @@
+/** ChatSession.ts — A conversation session between a user and a bot, with language locking. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IChatSession extends Document {

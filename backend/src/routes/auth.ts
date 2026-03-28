@@ -1,3 +1,13 @@
+/**
+ * auth.ts — Public & authenticated auth routes.
+ *
+ * Endpoints: register, login, logout, OAuth (Google/GitHub), profile,
+ * language list, language update.
+ *
+ * Registration creates a locked account that an admin must unlock.
+ * Login returns a JWT valid for 24 h.
+ */
+
 import { Router, Request, Response } from 'express';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';

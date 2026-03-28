@@ -1,3 +1,15 @@
+/**
+ * ollama.ts — Ollama LLM provider implementation.
+ *
+ * Supports both streaming (text-only) and non-streaming (tool-aware) modes.
+ * When tools are provided, the request uses non-streaming so that tool_calls
+ * arrive reliably in a single JSON response.
+ *
+ * Includes a balanced-brace inline tool_call parser for models (e.g. qwen)
+ * that emit tool calls as plain text `[tool_call] {"name":"...", ...}`
+ * instead of the structured `tool_calls` array.
+ */
+
 import { ILLMConfig } from '../../models/LLMConfig';
 import { createLogger } from '../../config/logger';
 import { OllamaToolDefinition } from '../toolService';

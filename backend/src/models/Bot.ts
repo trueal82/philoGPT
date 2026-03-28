@@ -1,3 +1,4 @@
+/** Bot.ts — Mongoose model for philosopher bots (avatar, personality, system prompt, LLM config). */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBot extends Document {

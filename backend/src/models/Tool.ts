@@ -1,3 +1,4 @@
+/** Tool.ts — Registered tools (Wikipedia, client_memory, etc.) with enable/disable toggle. */
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ITool extends Document {

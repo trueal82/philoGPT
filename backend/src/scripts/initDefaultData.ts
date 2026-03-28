@@ -1,3 +1,4 @@
+/** initDefaultData.ts — Seeds the database with default admin user, bots, tools, and config on first run. */
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import User from '../models/User';
