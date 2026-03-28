@@ -269,12 +269,21 @@ io.on('connection', (socket) => {
               metadata: { tool_name: toolName, tool_result: true },
             }).save();
 
+            // Notify client of memory writes
+            if (toolName === 'client_memory' && toolParams.action === 'write' && toolResult.startsWith('Memory updated:')) {
+              socket.emit('memory:created', { key: toolParams.key, value: toolParams.value });
+            }
+
             // Add to context: assistant with tool_calls, then tool result
             contextMessages.push({ role: 'assistant', content: '', tool_calls: [call] });
             contextMessages.push({ role: 'tool', content: toolResult, tool_name: toolName });
           }
 
           // Re-call with the extended history — keep tools so model can chain calls
+          // If the model embedded trailing text after an inline tool call, capture it
+          // so we can use it as the final response without re-calling the LLM.
+          const trailingContent = result.type === 'tool_calls' ? result.inlineTrailingContent : undefined;
+
           result = await streamLLMResponse(
             llmConfig,
             contextMessages,
@@ -283,9 +292,23 @@ io.on('connection', (socket) => {
             },
             toolDefs,
           );
+
+          // If the LLM returned an empty response but we had trailing content
+          // from the inline tool call, use that instead.
+          if (result.type === 'response' && result.content === '' && trailingContent) {
+            socketLog.debug('Using inline trailing content as response');
+            result = { type: 'response', content: trailingContent };
+            socket.emit('chat:token', { sessionId, token: trailingContent });
+          }
         }
 
         fullResponse = result.type === 'response' ? result.content : '';
+
+        // If the final result was tool_calls with trailing content (loop exited at max rounds)
+        if (fullResponse === '' && result.type === 'tool_calls' && result.inlineTrailingContent) {
+          fullResponse = result.inlineTrailingContent;
+          socket.emit('chat:token', { sessionId, token: fullResponse });
+        }
 
         // Fallback: if still empty after tool loop, retry without tools
         if (fullResponse === '' && toolDefs) {

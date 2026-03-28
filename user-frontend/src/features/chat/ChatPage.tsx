@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import TopBar from './TopBar';
+import Toast from './Toast';
 import Sidebar from '@/features/sessions/Sidebar';
 import ChatThread from './ChatThread';
 import NewChatModal from '@/features/bots/NewChatModal';
@@ -28,6 +29,7 @@ export default function ChatPage() {
       {activeModal === 'newChat' && <NewChatModal />}
       {activeModal === 'profile' && <ProfileModal />}
       {activeModal === 'memory' && <ClientMemoryModal />}
+      <Toast />
     </div>
   );
 }

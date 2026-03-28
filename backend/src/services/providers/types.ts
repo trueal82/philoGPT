@@ -20,7 +20,7 @@ export interface ToolCall {
 /** What every provider `stream` call must return. */
 export type LLMResult =
   | { type: 'response'; content: string }
-  | { type: 'tool_calls'; calls: ToolCall[] };
+  | { type: 'tool_calls'; calls: ToolCall[]; inlineTrailingContent?: string };
 
 /**
  * Contract that every LLM provider must implement.

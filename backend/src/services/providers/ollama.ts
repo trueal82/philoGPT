@@ -72,6 +72,25 @@ class OllamaProvider implements ILLMProvider {
         return { type: 'tool_calls', calls: toolCalls };
       }
       const content = json.message?.content ?? '';
+
+      // Some models (e.g. qwen) emit tool calls as plain text instead of the
+      // structured tool_calls array. Detect and parse them so the tool loop
+      // still works.  Pattern: [tool_call] {"name":"…","arguments":{…}}
+      const inlineMatch = content.match(/\[tool_call\]\s*(\{[\s\S]*?\})\s*([\s\S]*)/);
+      if (inlineMatch) {
+        try {
+          const parsed = JSON.parse(inlineMatch[1]) as { name: string; arguments: Record<string, unknown> };
+          if (parsed.name) {
+            log.debug({ parsed, trailing: inlineMatch[2] }, 'Parsed inline tool_call from content');
+            const trailingText = (inlineMatch[2] ?? '').trim();
+            const call: ToolCall = { function: { name: parsed.name, arguments: parsed.arguments ?? {} } };
+            return { type: 'tool_calls', calls: [call], inlineTrailingContent: trailingText } as LLMResult;
+          }
+        } catch (e) {
+          log.warn({ raw: inlineMatch[1], err: e }, 'Failed to parse inline tool_call JSON');
+        }
+      }
+
       if (content) {
         await onToken(content);
       }
