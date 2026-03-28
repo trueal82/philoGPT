@@ -272,6 +272,16 @@ io.on('connection', (socket) => {
             // Notify client of memory writes
             if (toolName === 'client_memory' && toolParams.action === 'write' && toolResult.startsWith('Memory updated:')) {
               socket.emit('memory:created', { key: toolParams.key, value: toolParams.value });
+
+              // Re-inject updated memory key index so the model knows what's stored now
+              const updatedKeys = await getClientMemoryKeys(userIdStr, botIdStr);
+              if (updatedKeys.length > 0) {
+                const keyIndex = [
+                  'UPDATED CLIENT MEMORY KEY INDEX:',
+                  ...updatedKeys.map((k) => `- ${k}`),
+                ].join('\n');
+                contextMessages.push({ role: 'tool', content: keyIndex, tool_name: 'client_memory' });
+              }
             }
 
             // Add to context: assistant with tool_calls, then tool result
