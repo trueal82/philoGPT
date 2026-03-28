@@ -76,18 +76,32 @@ class OllamaProvider implements ILLMProvider {
       // Some models (e.g. qwen) emit tool calls as plain text instead of the
       // structured tool_calls array. Detect and parse them so the tool loop
       // still works.  Pattern: [tool_call] {"name":"…","arguments":{…}}
-      const inlineMatch = content.match(/\[tool_call\]\s*(\{[\s\S]*?\})\s*([\s\S]*)/);
-      if (inlineMatch) {
-        try {
-          const parsed = JSON.parse(inlineMatch[1]) as { name: string; arguments: Record<string, unknown> };
-          if (parsed.name) {
-            log.debug({ parsed, trailing: inlineMatch[2] }, 'Parsed inline tool_call from content');
-            const trailingText = (inlineMatch[2] ?? '').trim();
-            const call: ToolCall = { function: { name: parsed.name, arguments: parsed.arguments ?? {} } };
-            return { type: 'tool_calls', calls: [call], inlineTrailingContent: trailingText } as LLMResult;
+      const tcPrefix = content.indexOf('[tool_call]');
+      if (tcPrefix !== -1) {
+        const afterTag = content.slice(tcPrefix + '[tool_call]'.length).trimStart();
+        const jsonStart = afterTag.indexOf('{');
+        if (jsonStart !== -1) {
+          // Find matching closing brace (balanced)
+          let depth = 0;
+          let jsonEnd = -1;
+          for (let i = jsonStart; i < afterTag.length; i++) {
+            if (afterTag[i] === '{') depth++;
+            else if (afterTag[i] === '}') { depth--; if (depth === 0) { jsonEnd = i; break; } }
           }
-        } catch (e) {
-          log.warn({ raw: inlineMatch[1], err: e }, 'Failed to parse inline tool_call JSON');
+          if (jsonEnd !== -1) {
+            const jsonStr = afterTag.slice(jsonStart, jsonEnd + 1);
+            const trailing = afterTag.slice(jsonEnd + 1).trim();
+            try {
+              const parsed = JSON.parse(jsonStr) as { name: string; arguments: Record<string, unknown> };
+              if (parsed.name) {
+                log.debug({ parsed, trailing }, 'Parsed inline tool_call from content');
+                const call: ToolCall = { function: { name: parsed.name, arguments: parsed.arguments ?? {} } };
+                return { type: 'tool_calls', calls: [call], inlineTrailingContent: trailing } as LLMResult;
+              }
+            } catch (e) {
+              log.warn({ raw: jsonStr, err: e }, 'Failed to parse inline tool_call JSON');
+            }
+          }
         }
       }
 

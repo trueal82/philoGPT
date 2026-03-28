@@ -170,7 +170,16 @@ async function executeClientMemory(
 
     const existing = await ClientMemory.findOne({ userId, botId });
     const currentData: Record<string, unknown> = existing?.data ?? {};
-    const updatedData = { ...currentData, [trimmedKey]: trimmedValue };
+
+    // Auto-suffix duplicate keys: if "foo" exists, store as "foo_1", "foo_2", etc.
+    let finalKey = trimmedKey;
+    if (finalKey in currentData) {
+      let suffix = 1;
+      while (`${trimmedKey}_${suffix}` in currentData) suffix++;
+      finalKey = `${trimmedKey}_${suffix}`;
+    }
+
+    const updatedData = { ...currentData, [finalKey]: trimmedValue };
 
     // Guard against bloating: cap at ~10 000 chars serialized
     if (JSON.stringify(updatedData).length > 10_000) {
@@ -182,8 +191,8 @@ async function executeClientMemory(
       { $set: { data: updatedData } },
       { upsert: true, new: true },
     );
-    log.debug({ userId, botId, key: trimmedKey }, 'Client memory written');
-    return `Memory updated: "${trimmedKey}" stored successfully.`;
+    log.debug({ userId, botId, key: finalKey }, 'Client memory written');
+    return `Memory updated: "${finalKey}" stored successfully.`;
   }
 
   return `Unknown action "${action}". Use "read" or "write".`;
