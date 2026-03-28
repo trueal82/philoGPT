@@ -632,6 +632,21 @@ async function showBotModal(bot = null) {
     });
   } catch { /* ignore */ }
 
+  // Populate LLM config select
+  const llmSelect = document.getElementById('botLlmConfig');
+  llmSelect.textContent = '';
+  llmSelect.appendChild(el('option', { value: '', textContent: '— Select LLM Config —' }));
+  try {
+    const llmRes = await apiFetch('/api/admin/llm-configs');
+    const llmData = await llmRes.json();
+    const currentLlm = bot?.llmConfigId ? String(typeof bot.llmConfigId === 'object' ? bot.llmConfigId._id : bot.llmConfigId) : '';
+    (llmData.configs || []).forEach((cfg) => {
+      const opt = el('option', { value: cfg._id, textContent: `${cfg.name} (${cfg.provider} / ${cfg.model})` });
+      if (cfg._id === currentLlm) opt.selected = true;
+      llmSelect.appendChild(opt);
+    });
+  } catch { /* ignore */ }
+
   const saveBtn = document.getElementById('saveBot');
   saveBtn.replaceWith(saveBtn.cloneNode(true));
   document.getElementById('saveBot').addEventListener('click', () => saveBot(bot?._id, bsModal));
@@ -653,6 +668,7 @@ async function saveBot(botId, bsModal) {
     systemPrompt: document.getElementById('botSystemPrompt').value.trim(),
     avatar: document.getElementById('botAvatar').value.trim(),
     availableToSubscriptionIds,
+    llmConfigId: document.getElementById('botLlmConfig').value || undefined,
   };
 
   if (!payload.name || !payload.systemPrompt) {

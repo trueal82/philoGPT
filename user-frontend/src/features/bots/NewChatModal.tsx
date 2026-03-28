@@ -47,7 +47,7 @@ export default function NewChatModal() {
                 onClick={() => createMutation.mutate(bot._id)}
                 disabled={createMutation.isPending}
               >
-                <span className="bot-avatar">{bot.avatar ?? '🧠'}</span>
+                <span className="bot-avatar">{bot.avatar || '🧠'}</span>
                 <span className="bot-name">{bot.name}</span>
                 {bot.description && (
                   <span className="bot-desc">{bot.description}</span>

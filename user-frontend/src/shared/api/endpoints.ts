@@ -30,6 +30,17 @@ export function getProfile() {
   return apiFetch<{ user: User }>('/api/auth/profile');
 }
 
+export function getLanguages() {
+  return apiFetch<{ languages: import('@/shared/types').Language[] }>('/api/auth/languages');
+}
+
+export function updateLanguage(languageCode: string) {
+  return apiFetch<{ languageCode: string }>('/api/auth/language', {
+    method: 'PATCH',
+    body: JSON.stringify({ languageCode }),
+  });
+}
+
 // --- Bots ---
 
 export function listBots() {

@@ -13,6 +13,7 @@ interface AuthState {
   register: (email: string, password: string) => Promise<string>;
   logout: () => void;
   loadProfile: () => Promise<void>;
+  updateLanguage: (code: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -63,5 +64,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       clearToken();
       set({ user: null, token: null, loading: false });
     }
+  },
+
+  updateLanguage: (code) => {
+    set((s) => (s.user ? { user: { ...s.user, languageCode: code } } : {}));
   },
 }));

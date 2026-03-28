@@ -18,7 +18,7 @@ const botSchema = new Schema<IBot>(
     description: { type: String, trim: true, maxlength: 500 },
     personality: { type: String, trim: true, maxlength: 2000 },
     systemPrompt: { type: String, required: true, maxlength: 10000 },
-    avatar: { type: String, maxlength: 2048 },
+    avatar: { type: String, maxlength: 2048, default: '🧠' },
     llmConfigId: { type: Schema.Types.ObjectId, ref: 'LLMConfig' },
     availableToSubscriptionIds: [
       { type: Schema.Types.ObjectId, ref: 'Subscription' },

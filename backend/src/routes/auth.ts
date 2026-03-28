@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import User, { IUser } from '../models/User';
 import UserGroup from '../models/UserGroup';
 import Subscription from '../models/Subscription';
+import Language from '../models/Language';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -212,6 +213,40 @@ router.get('/profile', authenticateToken, async (req: Request, res: Response): P
   } catch (error) {
     log.error({ err: error }, 'Profile fetch error');
     res.status(500).json({ message: 'Error fetching profile' });
+  }
+});
+
+// List active languages (for language picker)
+router.get('/languages', authenticateToken, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const languages = await Language.find({ active: true }).sort({ sortOrder: 1, code: 1 }).select('code name nativeName');
+    res.json({ languages });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching languages');
+    res.status(500).json({ message: 'Error fetching languages' });
+  }
+});
+
+// Update current user's language
+router.patch('/language', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { languageCode } = req.body as { languageCode: string };
+    if (!languageCode || typeof languageCode !== 'string') {
+      res.status(400).json({ message: 'languageCode is required' });
+      return;
+    }
+    const code = languageCode.toLowerCase().trim();
+    const lang = await Language.findOne({ code, active: true });
+    if (!lang) {
+      res.status(400).json({ message: 'Invalid language code' });
+      return;
+    }
+    await User.findByIdAndUpdate((req.user as IUser)._id, { languageCode: code });
+    log.info({ userId: (req.user as IUser)._id, languageCode: code }, 'User language updated');
+    res.json({ languageCode: code });
+  } catch (error) {
+    log.error({ err: error }, 'Error updating language');
+    res.status(500).json({ message: 'Error updating language' });
   }
 });
 

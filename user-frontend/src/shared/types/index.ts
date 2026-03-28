@@ -44,6 +44,13 @@ export interface ClientMemory {
   updatedAt: string;
 }
 
+export interface Language {
+  _id: string;
+  code: string;
+  name: string;
+  nativeName: string;
+}
+
 // API response wrappers
 export interface AuthResponse {
   token: string;

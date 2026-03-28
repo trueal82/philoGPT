@@ -50,19 +50,20 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
 
 router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds } = req.body as {
+    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
       name: string;
       description?: string;
       personality?: string;
       systemPrompt: string;
       avatar?: string;
       availableToSubscriptionIds?: string[];
+      llmConfigId?: string;
     };
     if (!name || !systemPrompt) {
       res.status(400).json({ message: 'Name and systemPrompt are required' });
       return;
     }
-    const bot = new Bot({ name, description, personality, systemPrompt, avatar, availableToSubscriptionIds });
+    const bot = new Bot({ name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined });
     await bot.save();
     log.info({ botId: bot._id, name }, 'Bot created');
     res.status(201).json({ bot, message: 'Bot created successfully' });
@@ -78,17 +79,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: Request, res: Re
       res.status(400).json({ message: 'Invalid bot ID' });
       return;
     }
-    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds } = req.body as {
+    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
       name?: string;
       description?: string;
       personality?: string;
       systemPrompt?: string;
       avatar?: string;
       availableToSubscriptionIds?: string[];
+      llmConfigId?: string;
     };
     const bot = await Bot.findByIdAndUpdate(
       req.params.id,
-      { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds },
+      { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined },
       { new: true, runValidators: true },
     );
     if (!bot) {
