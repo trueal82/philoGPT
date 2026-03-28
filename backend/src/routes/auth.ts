@@ -3,6 +3,8 @@ import passport from 'passport';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import User, { IUser } from '../models/User';
+import UserGroup from '../models/UserGroup';
+import Subscription from '../models/Subscription';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -63,13 +65,25 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
       return;
     }
 
-    const user = new User({ email, password, provider: 'local' });
+    // Assign default user group and subscription
+    const defaultGroup = await UserGroup.findOne({ name: 'General', active: true });
+    const defaultSub = await Subscription.findOne({ name: 'Basic', active: true });
+
+    const user = new User({
+      email,
+      password,
+      provider: 'local',
+      userGroupId: defaultGroup?._id,
+      subscriptionId: defaultSub?._id,
+      isLocked: true,
+      lockedAt: new Date(),
+      lockedReason: 'manual unlock required after registration',
+    });
     await user.save();
 
-    log.info({ userId: user._id, email: user.email }, 'User registered');
+    log.info({ userId: user._id, email: user.email }, 'User registered (locked, pending manual unlock)');
     res.status(201).json({
-      message: 'User registered successfully',
-      token: signToken(user._id),
+      message: 'Registration successful. Your account requires manual activation before you can sign in.',
       user: { id: user._id, email: user.email, provider: user.provider },
     });
   } catch (error) {

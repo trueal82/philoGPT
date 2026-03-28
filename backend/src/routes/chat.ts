@@ -4,6 +4,7 @@ import ChatSession from '../models/ChatSession';
 import Message from '../models/Message';
 import User, { IUser } from '../models/User';
 import ClientMemory from '../models/ClientMemory';
+import Bot from '../models/Bot';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -158,6 +159,70 @@ router.get('/memory/:botId', authenticateToken, async (req: Request, res: Respon
   } catch (error) {
     log.error({ err: error }, 'Error fetching client memory');
     res.status(500).json({ message: 'Error fetching client memory' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client memory — list ALL memories for the current user (grouped by bot)
+// ---------------------------------------------------------------------------
+router.get('/memories', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const memories = await ClientMemory.find({ userId: (req.user as IUser)._id })
+      .populate<{ botId: { _id: string; name: string; avatar?: string } }>('botId', 'name avatar')
+      .lean();
+    res.json({ memories });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching all client memories');
+    res.status(500).json({ message: 'Error fetching memories' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client memory — delete a single key from a specific bot's memory
+// ---------------------------------------------------------------------------
+router.delete('/memory/:botId/:key', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.botId)) {
+      res.status(400).json({ message: 'Invalid bot ID' });
+      return;
+    }
+    const key = req.params.key as string;
+    if (!key || typeof key !== 'string') {
+      res.status(400).json({ message: 'Key is required' });
+      return;
+    }
+    const record = await ClientMemory.findOne({
+      userId: (req.user as IUser)._id,
+      botId: req.params.botId,
+    });
+    if (!record) {
+      res.status(404).json({ message: 'Memory not found' });
+      return;
+    }
+    const data = record.data as Record<string, unknown>;
+    delete data[key];
+    record.data = data;
+    record.markModified('data');
+    await record.save();
+    log.info({ botId: req.params.botId, key }, 'Client memory key deleted');
+    res.json({ message: 'Memory key deleted' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting memory key');
+    res.status(500).json({ message: 'Error deleting memory key' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client memory — delete ALL memories for the current user
+// ---------------------------------------------------------------------------
+router.delete('/memories', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await ClientMemory.deleteMany({ userId: (req.user as IUser)._id });
+    log.info({ deletedCount: result.deletedCount }, 'All client memories deleted');
+    res.json({ message: 'All memories deleted', deletedCount: result.deletedCount });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting all memories');
+    res.status(500).json({ message: 'Error deleting memories' });
   }
 });
 
