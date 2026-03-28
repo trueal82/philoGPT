@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:*;">
+    <title>PhiloGPT Admin Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-robot"></i> PhiloGPT Admin
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-page="dashboard">
+                            <i class="fas fa-home"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="users">
+                            <i class="fas fa-users"></i> Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="bots">
+                            <i class="fas fa-robot"></i> Bots
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="llm-configs">
+                            <i class="fas fa-cogs"></i> LLM Configs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="system-prompt">
+                            <i class="fas fa-comment"></i> System Prompt
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="languages">
+                            <i class="fas fa-language"></i> Languages
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="user-groups">
+                            <i class="fas fa-layer-group"></i> User Groups
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="subscriptions">
+                            <i class="fas fa-tags"></i> Subscriptions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-page="playground">
+                            <i class="fas fa-play-circle"></i> Playground
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="logoutBtn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4" id="content">
+        <!-- Content will be loaded here -->
+    </div>
+
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userModalTitle">User Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="userEmail" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select class="form-control" id="userRole">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Language</label>
+                        <select class="form-control" id="userLanguageCode"></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">User Group</label>
+                        <select class="form-control" id="userGroupId">
+                            <option value="">-- None --</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Subscription</label>
+                        <select class="form-control" id="userSubscriptionId">
+                            <option value="">-- None --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveUser">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="botModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="botModalTitle">Bot Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" id="botName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="botDescription" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Personality</label>
+                        <input type="text" class="form-control" id="botPersonality">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">System Prompt</label>
+                        <textarea class="form-control" id="botSystemPrompt" rows="4"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Avatar URL</label>
+                        <input type="text" class="form-control" id="botAvatar">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Available to Subscriptions</label>
+                        <select class="form-control" id="botSubscriptions" multiple size="4"></select>
+                        <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveBot">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="llmConfigModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="llmConfigModalTitle">LLM Configuration</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" id="llmConfigName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Provider</label>
+                        <select class="form-control" id="llmConfigProvider">
+                            <option value="openai">OpenAI</option>
+                            <option value="ollama">Ollama</option>
+                            <option value="huggingface">Hugging Face</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">API Key</label>
+                        <input type="password" class="form-control" id="llmConfigApiKey">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">API URL</label>
+                        <input type="text" class="form-control" id="llmConfigApiUrl">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Model</label>
+                        <input type="text" class="form-control" id="llmConfigModel">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Temperature</label>
+                                <input type="number" class="form-control" id="llmConfigTemperature" min="0" max="1" step="0.1">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Max Tokens</label>
+                                <input type="number" class="form-control" id="llmConfigMaxTokens">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveLlmConfig">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Language Modal -->
+    <div class="modal fade" id="languageModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="languageModalTitle">Language</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Code</label>
+                        <input type="text" class="form-control" id="languageCode" placeholder="e.g. en-us">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" id="languageName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Native Name</label>
+                        <input type="text" class="form-control" id="languageNativeName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sort Order</label>
+                        <input type="number" class="form-control" id="languageSortOrder" value="0">
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="languageActive" checked>
+                        <label class="form-check-label" for="languageActive">Active</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveLanguage">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Group Modal -->
+    <div class="modal fade" id="userGroupModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userGroupModalTitle">User Group</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" id="userGroupName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="userGroupDescription" rows="3"></textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="userGroupActive" checked>
+                        <label class="form-check-label" for="userGroupActive">Active</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveUserGroup">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subscription Modal -->
+    <div class="modal fade" id="subscriptionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="subscriptionModalTitle">Subscription</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" id="subscriptionName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="subscriptionDescription" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Feature Flags (comma-separated)</label>
+                        <input type="text" class="form-control" id="subscriptionFeatureFlags">
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="subscriptionActive" checked>
+                        <label class="form-check-label" for="subscriptionActive">Active</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveSubscription">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+/* Custom styles for PhiloGPT Admin Panel */
+
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.table th {
+    border-top: none;
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.modal-content {
+    border-radius: 0.5rem;
+}
+
+.form-control:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .navbar-nav {
+        text-align: center;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+/* Dashboard cards */
+.card.text-white {
+    border: none;
+}
+
+.card.text-white .card-body {
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+/* Login page */
+.card {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    border-radius: 0.75rem 0.75rem 0 0 !important;
+    background-color: #0d6efd;
+    color: white;
+    font-weight: bold;
+}
+
+/* Table hover effect */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Form controls */
+.form-control {
+    border-radius: 0.375rem;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.btn-outline-primary {
+    color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-outline-primary:hover {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Navigation */
+.nav-link {
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    color: #0d6efd;
+}
+
+.nav-link.active {
+    color: #0d6efd;
+    font-weight: bold;
+}
+
+/* Alerts */
+.alert {
+    border-radius: 0.375rem;
+}
+
+/* Footer */
+footer {
+    background-color: #f8f9fa;
+    padding: 1rem 0;
+    margin-top: 2rem;
+    border-top: 1px solid #dee2e6;
+}

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/philogpt
+      - LOG_LEVEL=info
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  admin-frontend:
+    build: ./admin-frontend
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./admin-frontend/.env
+    environment:
+      - BACKEND_URL=http://backend:5001
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
