@@ -6,6 +6,8 @@ import { useUIStore } from '@/shared/stores/uiStore';
 
 export default function NewChatModal() {
   const closeModal = useUIStore((s) => s.closeModal);
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -22,6 +24,8 @@ export default function NewChatModal() {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       closeModal();
       navigate(`/chat/${res.session._id}`);
+      // On mobile, close the sidebar so the chat + input are fully visible
+      if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
     },
   });
 
