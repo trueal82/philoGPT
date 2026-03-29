@@ -1,6 +1,8 @@
 import { getToken, clearToken } from '@/shared/utils/tokenStorage';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+const API_BASE: string =
+  window.__APP_CONFIG__?.apiUrl ??
+  import.meta.env.VITE_API_BASE_URL;
 
 if (!API_BASE) {
   throw new Error('VITE_API_BASE_URL is not configured');

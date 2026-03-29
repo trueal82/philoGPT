@@ -1,18 +1,27 @@
 version: '3.8'
 
+# All deployment values come from the root .env file (cp .env.example .env).
+# Variable syntax: ${VAR} — substituted by Compose from .env at startup.
+
 services:
   backend:
     build: ./backend
     ports:
       - "5001:5001"
-    env_file:
-      - ./backend/.env
     environment:
       - MONGODB_URI=mongodb://mongo:27017/philogpt
-      - LOG_LEVEL=info
+      - PORT=5001
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - JWT_SECRET=${JWT_SECRET}
+      - ALLOWED_ORIGINS=${FRONTEND_URL},${ADMIN_URL}
       - SEED_ON_EMPTY_DB=true
-      - ADMIN_EMAIL=admin@example.com
-      - ADMIN_PASSWORD=nimda123
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # --- Optional OAuth (set in .env to enable) ---
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
     depends_on:
       - mongo
     restart: unless-stopped
@@ -21,10 +30,17 @@ services:
     build: ./admin-frontend
     ports:
       - "3001:3001"
-    env_file:
-      - ./admin-frontend/.env
     environment:
-      - BACKEND_URL=http://backend:5001
+      - BACKEND_URL=${API_URL}
+    restart: unless-stopped
+
+  user-frontend:
+    build: ./user-frontend
+    ports:
+      - "3002:3002"
+    environment:
+      - BACKEND_URL=${API_URL}
+      - SOCKET_URL=${API_URL}
     restart: unless-stopped
 
   mongo:

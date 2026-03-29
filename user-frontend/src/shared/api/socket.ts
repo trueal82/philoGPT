@@ -1,7 +1,9 @@
 import { io, Socket } from 'socket.io-client';
 import { getToken } from '@/shared/utils/tokenStorage';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
+const SOCKET_URL: string =
+  window.__APP_CONFIG__?.socketUrl ??
+  import.meta.env.VITE_SOCKET_URL;
 
 let socket: Socket | null = null;
 
