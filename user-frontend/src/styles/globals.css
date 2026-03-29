@@ -255,6 +255,16 @@ a:hover { text-decoration: underline; }
   color: var(--color-error);
 }
 
+/* Sidebar backdrop — hidden on desktop, shown by mobile media query */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 149;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* --- Main Area --- */
 
 .chat-main {
@@ -908,29 +918,77 @@ a:hover { text-decoration: underline; }
    ========================================= */
 
 @media (max-width: 768px) {
+  /* Sidebar overlays content instead of pushing it (ChatGPT pattern) */
   .sidebar {
     position: fixed;
     left: 0;
     top: 0;
-    bottom: 0;
+    height: 100%;
     z-index: 150;
-    box-shadow: 4px 0 12px rgba(0,0,0,0.5);
+    margin-left: 0 !important;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transform: translateX(0);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.6);
   }
 
   .sidebar.closed {
-    margin-left: calc(-1 * var(--sidebar-width));
+    transform: translateX(-100%);
     box-shadow: none;
   }
 
+  /* Show tap-outside backdrop on mobile */
+  .sidebar-backdrop {
+    display: block;
+  }
+
+  /* Tighter padding on narrow screens */
   .messages-container {
-    padding: 1rem;
+    padding: 1rem 0.75rem;
   }
 
+  /* Input: tighter + iOS home-indicator safe area */
   .chat-input-form {
-    padding: 0.5rem 1rem 0.75rem;
+    padding: 0.5rem 0.75rem 0.75rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
+  /* Always show delete — no hover on touch devices */
+  .session-delete {
+    opacity: 1;
+  }
+
+  /* Shrink email trigger so topbar fits 375px screens */
+  .user-menu-trigger {
+    max-width: 110px;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  /* Modals: near full-width, taller */
+  .modal-content,
+  .modal-sm {
+    width: 95%;
+    max-width: none;
+    max-height: 90vh;
+  }
+
+  .modal-lg {
+    width: 95%;
+    max-width: none;
+    max-height: 90vh;
+  }
+
+  .modal-lg .modal-body {
+    max-height: calc(90vh - 60px);
+  }
+
+  /* Bot grid: smaller cards */
   .bot-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+
+  /* Prevent title overflow */
+  .top-bar-title {
+    font-size: 0.95rem;
   }
 }

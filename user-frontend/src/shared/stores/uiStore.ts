@@ -29,7 +29,7 @@ export const useUIStore = create<UIState>((set, get) => {
   applyTheme(initialTheme);
 
   return {
-    sidebarOpen: true,
+    sidebarOpen: typeof window !== 'undefined' ? window.innerWidth > 768 : true,
     activeModal: null,
     theme: initialTheme,
     toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

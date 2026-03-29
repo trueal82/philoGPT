@@ -28,6 +28,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const openModal = useUIStore((s) => s.openModal);
   const { t } = useTranslation();
 
@@ -50,7 +51,11 @@ export default function Sidebar() {
   const sessions = data ?? [];
 
   return (
-    <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+    <>
+      {sidebarOpen && (
+        <div className="sidebar-backdrop" onClick={toggleSidebar} aria-hidden="true" />
+      )}
+      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
         <button
           className="new-chat-btn"
@@ -72,9 +77,15 @@ export default function Sidebar() {
             className={`session-item ${s._id === sessionId ? 'active' : ''}`}
             role="button"
             tabIndex={0}
-            onClick={() => navigate(`/chat/${s._id}`)}
+            onClick={() => {
+              navigate(`/chat/${s._id}`);
+              if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') navigate(`/chat/${s._id}`);
+              if (e.key === 'Enter' || e.key === ' ') {
+                navigate(`/chat/${s._id}`);
+                if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
+              }
             }}
           >
             <span className="session-label">{sessionLabel(s) || t('chat.defaultTitle')}</span>
@@ -91,6 +102,7 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-    </aside>
+      </aside>
+    </>
   );
 }
