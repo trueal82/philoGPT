@@ -12,7 +12,6 @@ export interface Bot {
   _id: string;
   name: string;
   description?: string;
-  personality?: string;
   avatar?: string;
 }
 

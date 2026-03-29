@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import * as api from '@/shared/api/endpoints';
 import { useUIStore } from '@/shared/stores/uiStore';
 
 export default function NewChatModal() {
   const closeModal = useUIStore((s) => s.closeModal);
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -34,11 +36,11 @@ export default function NewChatModal() {
         aria-label="Choose a philosopher"
       >
         <div className="modal-header">
-          <h2>Choose a Philosopher</h2>
+          <h2>{t('modal.choosePhilosopher')}</h2>
           <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
         </div>
         <div className="modal-body">
-          {isLoading && <p>Loading philosophers…</p>}
+          {isLoading && <p>{t('modal.loadingPhilosophers')}</p>}
           <div className="bot-grid">
             {bots.map((bot) => (
               <button

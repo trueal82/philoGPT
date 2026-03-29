@@ -18,7 +18,6 @@ import pinoHttp from 'pino-http';
 import rateLimit from 'express-rate-limit';
 import passport from './config/passport';
 import logger, { createLogger } from './config/logger';
-import { ensureDemoDataIfDatabaseEmpty } from './scripts/initDefaultData';
 import authRoutes from './routes/auth';
 import botRoutes from './routes/bots';
 import chatRoutes from './routes/chat';
@@ -113,15 +112,8 @@ log.debug({ uri: MONGODB_URI.replace(/\/\/[^@]+@/, '//<credentials>@') }, 'Conne
 
 mongoose
   .connect(MONGODB_URI)
-  .then(async () => {
+  .then(() => {
     log.info('Connected to MongoDB');
-
-    if (process.env.SEED_DEMO_DATA !== 'false') {
-      const seeded = await ensureDemoDataIfDatabaseEmpty();
-      log.debug({ seeded }, 'Demo data seed check completed');
-    } else {
-      log.info('Skipping demo data seed (SEED_DEMO_DATA=false)');
-    }
   })
   .catch((err: Error) => {
     log.fatal({ err }, 'MongoDB connection error');

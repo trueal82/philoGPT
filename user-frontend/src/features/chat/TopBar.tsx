@@ -1,6 +1,7 @@
 import { useAuthStore } from '@/features/auth/authStore';
 import { useUIStore } from '@/shared/stores/uiStore';
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '@/shared/api/endpoints';
 
@@ -12,6 +13,7 @@ export default function TopBar() {
   const openModal = useUIStore((s) => s.openModal);
   const theme = useUIStore((s) => s.theme);
   const toggleTheme = useUIStore((s) => s.toggleTheme);
+  const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -66,7 +68,7 @@ export default function TopBar() {
           aria-haspopup="true"
           aria-expanded={menuOpen}
         >
-          {user?.email ?? 'User'}
+          {user?.email ?? t('common.user')}
         </button>
         {menuOpen && (
           <div className="user-menu-dropdown" role="menu">
@@ -74,13 +76,13 @@ export default function TopBar() {
               role="menuitem"
               onClick={() => { openModal('profile'); setMenuOpen(false); }}
             >
-              Profile
+              {t('nav.profile')}
             </button>
             <button
               role="menuitem"
               onClick={() => { openModal('memory'); setMenuOpen(false); }}
             >
-              My Memory
+              {t('nav.myMemory')}
             </button>
             {langData && langData.languages.length > 0 && (
               <>
@@ -108,7 +110,7 @@ export default function TopBar() {
               role="menuitem"
               onClick={() => { logout(); }}
             >
-              Sign out
+              {t('auth.signOut')}
             </button>
           </div>
         )}

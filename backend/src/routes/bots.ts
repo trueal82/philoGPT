@@ -1,16 +1,22 @@
 /**
  * bots.ts — Bot CRUD routes.
  *
- * - GET  / — list bots visible to the authenticated user (subscription-filtered)
- * - GET  /:id — single bot detail
- * - POST / — create (admin only)
- * - PUT  /:id — update (admin only)
- * - DELETE /:id — delete (admin only)
+ * Localizable fields (name, description, personality, systemPrompt) live in
+ * BotLocale — the Bot document only stores technical fields (avatar, llmConfigId,
+ * availableToSubscriptionIds).  GET routes resolve the user's locale and merge
+ * name / description into the response so consumers get a flat object.
+ *
+ * - GET  / — list bots visible to the authenticated user (locale-resolved)
+ * - GET  /:id — single bot detail (locale-resolved)
+ * - POST / — create (admin only, technical fields only)
+ * - PUT  /:id — update (admin only, technical fields only)
+ * - DELETE /:id — delete (admin only, cascades BotLocale)
  */
 
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Bot from '../models/Bot';
+import BotLocale from '../models/BotLocale';
 import User, { IUser } from '../models/User';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
@@ -22,9 +28,49 @@ function isValidObjectId(id: string | string[]): id is string {
   return typeof id === 'string' && mongoose.Types.ObjectId.isValid(id);
 }
 
+/**
+ * Merge locale-resolved name/description into a flat bot object for API consumers.
+ * Falls back from user language → en-us → empty strings.
+ */
+async function enrichBotsWithLocale(
+  bots: InstanceType<typeof Bot>[],
+  languageCode: string,
+): Promise<Record<string, unknown>[]> {
+  if (bots.length === 0) return [];
+
+  const botIds = bots.map((b) => b._id);
+  const normalizedCode = languageCode.toLowerCase().trim();
+
+  // Fetch all locales for the requested language + en-us fallback in one query
+  const locales = await BotLocale.find({
+    botId: { $in: botIds },
+    languageCode: { $in: [normalizedCode, 'en-us'] },
+  }).lean();
+
+  // Build lookup: botId -> { [languageCode]: locale }
+  const localeMap = new Map<string, Map<string, typeof locales[0]>>();
+  for (const loc of locales) {
+    const key = loc.botId.toString();
+    if (!localeMap.has(key)) localeMap.set(key, new Map());
+    localeMap.get(key)!.set(loc.languageCode, loc);
+  }
+
+  return bots.map((bot) => {
+    const obj = bot.toObject();
+    const byLang = localeMap.get(bot._id.toString());
+    const locale = byLang?.get(normalizedCode) ?? byLang?.get('en-us');
+    return {
+      ...obj,
+      name: locale?.name ?? '',
+      description: locale?.description ?? '',
+    };
+  });
+}
+
 router.get('/', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
     const user = req.user as IUser;
+    const languageCode = user.languageCode || 'en-us';
     let bots;
     if (user.role === 'admin') {
       bots = await Bot.find();
@@ -33,7 +79,8 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
     } else {
       bots = await Bot.find({ availableToSubscriptionIds: { $size: 0 } });
     }
-    res.json({ bots });
+    const enriched = await enrichBotsWithLocale(bots, languageCode);
+    res.json({ bots: enriched });
   } catch (error) {
     log.error({ err: error }, 'Error fetching bots');
     res.status(500).json({ message: 'Error fetching bots' });
@@ -51,7 +98,9 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
       res.status(404).json({ message: 'Bot not found' });
       return;
     }
-    res.json({ bot });
+    const user = req.user as IUser;
+    const [enriched] = await enrichBotsWithLocale([bot], user.languageCode || 'en-us');
+    res.json({ bot: enriched });
   } catch (error) {
     log.error({ err: error }, 'Error fetching bot');
     res.status(500).json({ message: 'Error fetching bot' });
@@ -60,22 +109,14 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
 
 router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
-      name: string;
-      description?: string;
-      personality?: string;
-      systemPrompt: string;
+    const { avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
       avatar?: string;
       availableToSubscriptionIds?: string[];
       llmConfigId?: string;
     };
-    if (!name || !systemPrompt) {
-      res.status(400).json({ message: 'Name and systemPrompt are required' });
-      return;
-    }
-    const bot = new Bot({ name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined });
+    const bot = new Bot({ avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined });
     await bot.save();
-    log.info({ botId: bot._id, name }, 'Bot created');
+    log.info({ botId: bot._id }, 'Bot created');
     res.status(201).json({ bot, message: 'Bot created successfully' });
   } catch (error) {
     log.error({ err: error }, 'Error creating bot');
@@ -89,18 +130,14 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: Request, res: Re
       res.status(400).json({ message: 'Invalid bot ID' });
       return;
     }
-    const { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
-      name?: string;
-      description?: string;
-      personality?: string;
-      systemPrompt?: string;
+    const { avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
       avatar?: string;
       availableToSubscriptionIds?: string[];
       llmConfigId?: string;
     };
     const bot = await Bot.findByIdAndUpdate(
       req.params.id,
-      { name, description, personality, systemPrompt, avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined },
+      { avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined },
       { new: true, runValidators: true },
     );
     if (!bot) {
@@ -125,6 +162,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: Request, res:
       res.status(404).json({ message: 'Bot not found' });
       return;
     }
+    await BotLocale.deleteMany({ botId: req.params.id });
     log.info({ botId: req.params.id }, 'Bot deleted');
     res.json({ message: 'Bot deleted successfully' });
   } catch (error) {

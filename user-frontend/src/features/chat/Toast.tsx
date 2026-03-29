@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getSocket } from '@/shared/api/socket';
 
 interface ToastItem {
@@ -10,10 +11,11 @@ interface ToastItem {
 let nextId = 0;
 
 export default function Toast() {
+  const { t } = useTranslation();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   useEffect(() => {
@@ -33,12 +35,12 @@ export default function Toast() {
 
   return (
     <div className="toast-container">
-      {toasts.map((t) => (
-        <div key={t.id} className="toast-item">
+      {toasts.map((item) => (
+        <div key={item.id} className="toast-item">
           <span className="toast-text">
-            New memory created: <strong>{t.key}</strong>
+            {t('toast.memoryCreated')} <strong>{item.key}</strong>
           </span>
-          <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Close">×</button>
+          <button className="toast-close" onClick={() => dismiss(item.id)} aria-label="Close">×</button>
         </div>
       ))}
     </div>

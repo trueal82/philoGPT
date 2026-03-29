@@ -1,0 +1,56 @@
+{
+  "app": {
+    "name": "PhiloGPT"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "loginSubtitle": "Sign in to continue",
+    "noAccount": "Don't have an account?",
+    "createOne": "Create one",
+    "createAccount": "Create account",
+    "creatingAccount": "Creating account…",
+    "registerSubtitle": "Create your account",
+    "confirmPassword": "Confirm password",
+    "passwordHint": "At least 8 characters",
+    "passwordMismatch": "Passwords do not match",
+    "accountCreated": "Account created",
+    "hasAccount": "Already have an account?",
+    "signOut": "Sign out"
+  },
+  "common": {
+    "email": "Email",
+    "password": "Password",
+    "loading": "Loading…",
+    "deleting": "Deleting…",
+    "refresh": "Refresh",
+    "user": "User"
+  },
+  "chat": {
+    "inputPlaceholder": "Send a message…",
+    "placeholderText": "Select a conversation or start a new chat",
+    "loadingMessages": "Loading messages…",
+    "emptyState": "Send a message to start the conversation.",
+    "defaultTitle": "Chat",
+    "newChat": "+ New Chat",
+    "noConversations": "No conversations yet"
+  },
+  "nav": {
+    "profile": "Profile",
+    "myMemory": "My Memory"
+  },
+  "toast": {
+    "memoryCreated": "New memory created:"
+  },
+  "modal": {
+    "choosePhilosopher": "Choose a Philosopher",
+    "loadingPhilosophers": "Loading philosophers…",
+    "deleteAllConfirm": "Delete ALL your memories across all philosophers?",
+    "deleteAllMemories": "Delete all my memories",
+    "loadingMemories": "Loading memories…",
+    "noMemories": "No memories stored yet.",
+    "profile": "Profile",
+    "provider": "Provider",
+    "role": "Role"
+  }
+}

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import type { ChatSession, Bot } from '@/shared/types';
 import * as api from '@/shared/api/endpoints';
 import { useUIStore } from '@/shared/stores/uiStore';
@@ -9,7 +10,7 @@ function sessionLabel(session: ChatSession): string {
   const name = typeof session.botId === 'object' ? bot?.name : undefined;
   if (session.title) return session.title;
   if (name) return name;
-  return 'Chat';
+  return '';
 }
 
 export default function Sidebar() {
@@ -18,6 +19,7 @@ export default function Sidebar() {
   const queryClient = useQueryClient();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const openModal = useUIStore((s) => s.openModal);
+  const { t } = useTranslation();
 
   const { data, isLoading } = useQuery({
     queryKey: ['sessions'],
@@ -45,14 +47,14 @@ export default function Sidebar() {
           onClick={() => openModal('newChat')}
           aria-label="New chat"
         >
-          + New Chat
+          {t('chat.newChat')}
         </button>
       </div>
 
       <nav className="session-list" aria-label="Chat sessions">
-        {isLoading && <p className="sidebar-empty">Loading…</p>}
+        {isLoading && <p className="sidebar-empty">{t('common.loading')}</p>}
         {!isLoading && sessions.length === 0 && (
-          <p className="sidebar-empty">No conversations yet</p>
+          <p className="sidebar-empty">{t('chat.noConversations')}</p>
         )}
         {sessions.map((s) => (
           <div
@@ -65,7 +67,7 @@ export default function Sidebar() {
               if (e.key === 'Enter' || e.key === ' ') navigate(`/chat/${s._id}`);
             }}
           >
-            <span className="session-label">{sessionLabel(s)}</span>
+            <span className="session-label">{sessionLabel(s) || t('chat.defaultTitle')}</span>
             <button
               className="session-delete"
               aria-label={`Delete session ${sessionLabel(s)}`}

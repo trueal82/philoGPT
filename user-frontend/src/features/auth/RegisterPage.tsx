@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './authStore';
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -15,7 +17,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (password !== confirm) {
-      setLocalError('Passwords do not match');
+      setLocalError(t('auth.passwordMismatch'));
       return;
     }
     setLocalError('');
@@ -32,10 +34,10 @@ export default function RegisterPage() {
       <div className="auth-page">
         <div className="auth-card">
           <h1>PhiloGPT</h1>
-          <p className="auth-subtitle">Account created</p>
+          <p className="auth-subtitle">{t('auth.accountCreated')}</p>
           <p className="auth-success">{successMsg}</p>
           <p className="auth-link">
-            <Link to="/login">Back to sign in</Link>
+            <Link to="/login">{t('auth.signIn')}</Link>
           </p>
         </div>
       </div>
@@ -46,9 +48,9 @@ export default function RegisterPage() {
     <div className="auth-page">
       <div className="auth-card">
         <h1>PhiloGPT</h1>
-        <p className="auth-subtitle">Create your account</p>
+        <p className="auth-subtitle">{t('auth.registerSubtitle')}</p>
         <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">{t('common.email')}</label>
           <input
             id="email"
             type="email"
@@ -58,7 +60,7 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
           />
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t('common.password')}</label>
           <input
             id="password"
             type="password"
@@ -67,9 +69,9 @@ export default function RegisterPage() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 8 characters"
+            placeholder={t('auth.passwordHint')}
           />
-          <label htmlFor="confirm">Confirm password</label>
+          <label htmlFor="confirm">{t('auth.confirmPassword')}</label>
           <input
             id="confirm"
             type="password"
@@ -84,11 +86,11 @@ export default function RegisterPage() {
             <p className="auth-error">{localError || error}</p>
           )}
           <button type="submit" disabled={loading}>
-            {loading ? 'Creating account…' : 'Create account'}
+            {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
           </button>
         </form>
         <p className="auth-link">
-          Already have an account? <Link to="/login">Sign in</Link>
+          {t('auth.hasAccount')} <Link to="/login">{t('auth.signIn')}</Link>
         </p>
       </div>
     </div>

@@ -1,11 +1,7 @@
-/** Bot.ts — Mongoose model for philosopher bots (avatar, personality, system prompt, LLM config). */
+/** Bot.ts — Mongoose model for philosopher bots (avatar, LLM config, subscriptions). Localizable fields live in BotLocale. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBot extends Document {
-  name: string;
-  description?: string;
-  personality?: string;
-  systemPrompt: string;
   avatar?: string;
   llmConfigId?: Types.ObjectId;
   availableToSubscriptionIds: Types.ObjectId[];
@@ -15,10 +11,6 @@ export interface IBot extends Document {
 
 const botSchema = new Schema<IBot>(
   {
-    name: { type: String, required: true, trim: true, maxlength: 100 },
-    description: { type: String, trim: true, maxlength: 500 },
-    personality: { type: String, trim: true, maxlength: 2000 },
-    systemPrompt: { type: String, required: true, maxlength: 10000 },
     avatar: { type: String, maxlength: 2048, default: '🧠' },
     llmConfigId: { type: Schema.Types.ObjectId, ref: 'LLMConfig' },
     availableToSubscriptionIds: [

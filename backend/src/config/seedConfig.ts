@@ -1,7 +1,7 @@
 /**
  * seedConfig.ts — Environment-based defaults for database seeding.
  *
- * Values are used by `initDefaultData.ts` to create the initial admin user
+ * Values are used by `mongodb/initDefaultData.ts` to create the initial admin user
  * and connect to MongoDB during standalone seed runs.
  */
 

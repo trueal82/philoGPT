@@ -26,7 +26,7 @@ import Message from '../models/Message';
 import SystemPrompt from '../models/SystemPrompt';
 
 import { streamLLMResponse, ChatMessage } from '../services/llmService';
-import { resolveLocale, buildSystemMessage } from '../services/promptLocalizationService';
+import { resolveLocale, buildSystemMessage, resolveSystemPromptContent } from '../services/promptLocalizationService';
 import {
   getEnabledTools,
   buildOllamaToolDefinitions,
@@ -251,7 +251,7 @@ async function buildFullSystemMessage(
   let systemMsg = '';
 
   if (globalPrompt?.content) {
-    systemMsg += globalPrompt.content + '\n\n';
+    systemMsg += resolveSystemPromptContent(globalPrompt as any, lockedLang) + '\n\n';
   }
   systemMsg += buildSystemMessage(resolved, lockedLang);
 

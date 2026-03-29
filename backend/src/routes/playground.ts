@@ -2,6 +2,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Bot from '../models/Bot';
+import BotLocale from '../models/BotLocale';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -14,8 +15,18 @@ function isValidObjectId(id: string): boolean {
 
 router.get('/bots', authenticateToken, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const bots = await Bot.find({}, 'name description avatar');
-    res.json({ bots });
+    const bots = await Bot.find({}, 'avatar');
+    // Enrich with en-us locale names for admin playground
+    const botIds = bots.map((b) => b._id);
+    const locales = await BotLocale.find({ botId: { $in: botIds }, languageCode: 'en-us' }).lean();
+    const nameMap = new Map<string, { name?: string; description?: string }>();
+    for (const loc of locales) nameMap.set(loc.botId.toString(), { name: loc.name, description: loc.description });
+    const enriched = bots.map((b) => {
+      const obj = b.toObject();
+      const loc = nameMap.get(b._id.toString());
+      return { ...obj, name: loc?.name ?? '', description: loc?.description ?? '' };
+    });
+    res.json({ bots: enriched });
   } catch (error) {
     log.error({ err: error }, 'Error fetching bots');
     res.status(500).json({ message: 'Error fetching bots' });
@@ -34,9 +45,10 @@ router.post('/sessions', authenticateToken, async (req: Request, res: Response):
       res.status(404).json({ message: 'Bot not found' });
       return;
     }
+    const locale = await BotLocale.findOne({ botId, languageCode: 'en-us' }).lean();
     res.json({
       message: 'Playground session started',
-      bot: { id: bot._id, name: bot.name, description: bot.description, avatar: bot.avatar },
+      bot: { id: bot._id, name: locale?.name ?? '', description: locale?.description ?? '', avatar: bot.avatar },
     });
   } catch (error) {
     log.error({ err: error }, 'Error starting playground session');

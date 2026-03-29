@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import * as api from '@/shared/api/endpoints';
 import { useUIStore } from '@/shared/stores/uiStore';
 import type { ClientMemory } from '@/shared/types';
@@ -19,6 +20,7 @@ function memBotId(mem: ClientMemory): string {
 
 export default function ClientMemoryModal() {
   const closeModal = useUIStore((s) => s.closeModal);
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
@@ -54,7 +56,7 @@ export default function ClientMemoryModal() {
         aria-label="My Memory"
       >
         <div className="modal-header">
-          <h2>My Memory</h2>
+          <h2>{t('nav.myMemory')}</h2>
           <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
         </div>
         <div className="modal-body">
@@ -63,20 +65,20 @@ export default function ClientMemoryModal() {
               <button
                 className="delete-all-btn"
                 onClick={() => {
-                  if (window.confirm('Delete ALL your memories across all philosophers?')) {
+                  if (window.confirm(t('modal.deleteAllConfirm'))) {
                     deleteAllMut.mutate();
                   }
                 }}
                 disabled={deleteAllMut.isPending}
               >
-                {deleteAllMut.isPending ? 'Deleting…' : 'Delete all my memories'}
+                {deleteAllMut.isPending ? t('common.deleting') : t('modal.deleteAllMemories')}
               </button>
-              <button className="refresh-btn" onClick={() => refetch()}>Refresh</button>
+              <button className="refresh-btn" onClick={() => refetch()}>{t('common.refresh')}</button>
             </div>
           )}
 
-          {isLoading && <p>Loading memories…</p>}
-          {!isLoading && !hasAny && <p className="memory-empty">No memories stored yet.</p>}
+          {isLoading && <p>{t('modal.loadingMemories')}</p>}
+          {!isLoading && !hasAny && <p className="memory-empty">{t('modal.noMemories')}</p>}
 
           {memories
             .filter((m) => Object.keys(m.data ?? {}).length > 0)

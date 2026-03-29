@@ -14,8 +14,49 @@ import Message from '../models/Message';
 import User, { IUser } from '../models/User';
 import ClientMemory from '../models/ClientMemory';
 import Bot from '../models/Bot';
+import BotLocale from '../models/BotLocale';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
+
+/** Enrich populated sessions/memories with locale-resolved bot name. */
+async function resolveBotNames(
+  items: Array<{ botId?: { _id: unknown; avatar?: string } | unknown }>,
+  languageCode: string,
+): Promise<void> {
+  const normalized = languageCode.toLowerCase().trim();
+  // Collect unique bot IDs from populated objects
+  const botIdSet = new Set<string>();
+  for (const item of items) {
+    if (item.botId && typeof item.botId === 'object' && '_id' in (item.botId as Record<string, unknown>)) {
+      botIdSet.add(String((item.botId as Record<string, unknown>)._id));
+    }
+  }
+  if (botIdSet.size === 0) return;
+
+  const botIds = [...botIdSet];
+  const locales = await BotLocale.find({
+    botId: { $in: botIds },
+    languageCode: { $in: [normalized, 'en-us'] },
+  }).lean();
+
+  const nameMap = new Map<string, string>();
+  // Prefer exact match, fall back to en-us
+  for (const loc of locales) {
+    const id = loc.botId.toString();
+    if (loc.languageCode === normalized) {
+      nameMap.set(id, loc.name || '');
+    } else if (!nameMap.has(id)) {
+      nameMap.set(id, loc.name || '');
+    }
+  }
+
+  for (const item of items) {
+    if (item.botId && typeof item.botId === 'object' && '_id' in (item.botId as Record<string, unknown>)) {
+      const botObj = item.botId as Record<string, unknown>;
+      botObj.name = nameMap.get(String(botObj._id)) || '';
+    }
+  }
+}
 
 const router = Router();
 const log = createLogger('chat');
@@ -28,9 +69,11 @@ const VALID_ROLES = ['user', 'assistant', 'system'] as const;
 
 router.get('/sessions', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    const sessions = await ChatSession.find({ userId: (req.user as IUser)._id })
-      .populate('botId', 'name avatar')
+    const user = req.user as IUser;
+    const sessions = await ChatSession.find({ userId: user._id })
+      .populate('botId', 'avatar')
       .sort({ updatedAt: -1 });
+    await resolveBotNames(sessions as unknown as Array<{ botId?: Record<string, unknown> }>, user.languageCode || 'en-us');
     res.json({ sessions });
   } catch (error) {
     log.error({ err: error }, 'Error fetching chat sessions');
@@ -56,7 +99,9 @@ router.post('/sessions', authenticateToken, async (req: Request, res: Response):
       lockedLanguageCode: user.languageCode || 'en-us',
     });
     await session.save();
-    await session.populate('botId', 'name avatar');
+    await session.populate('botId', 'avatar');
+    const user2 = req.user as IUser;
+    await resolveBotNames([session as unknown as { botId?: Record<string, unknown> }], user2.languageCode || 'en-us');
     log.info({ sessionId: session._id, botId, lockedLanguageCode: session.lockedLanguageCode }, 'Chat session created');
     res.status(201).json({ session, message: 'Chat session created' });
   } catch (error) {
@@ -176,9 +221,11 @@ router.get('/memory/:botId', authenticateToken, async (req: Request, res: Respon
 // ---------------------------------------------------------------------------
 router.get('/memories', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    const memories = await ClientMemory.find({ userId: (req.user as IUser)._id })
-      .populate<{ botId: { _id: string; name: string; avatar?: string } }>('botId', 'name avatar')
+    const user3 = req.user as IUser;
+    const memories = await ClientMemory.find({ userId: user3._id })
+      .populate<{ botId: { _id: string; name?: string; avatar?: string } }>('botId', 'avatar')
       .lean();
+    await resolveBotNames(memories as unknown as Array<{ botId?: Record<string, unknown> }>, user3.languageCode || 'en-us');
     res.json({ memories });
   } catch (error) {
     log.error({ err: error }, 'Error fetching all client memories');

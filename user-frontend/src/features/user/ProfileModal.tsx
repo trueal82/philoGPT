@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useUIStore } from '@/shared/stores/uiStore';
 
 export default function ProfileModal() {
   const user = useAuthStore((s) => s.user);
   const closeModal = useUIStore((s) => s.closeModal);
+  const { t } = useTranslation();
 
   if (!user) return null;
 
@@ -16,18 +18,18 @@ export default function ProfileModal() {
         aria-label="Profile"
       >
         <div className="modal-header">
-          <h2>Profile</h2>
+          <h2>{t('modal.profile')}</h2>
           <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
         </div>
         <div className="modal-body">
           <dl className="profile-dl">
-            <dt>Email</dt>
+            <dt>{t('common.email')}</dt>
             <dd>{user.email}</dd>
-            <dt>Provider</dt>
+            <dt>{t('modal.provider')}</dt>
             <dd>{user.provider}</dd>
             {user.role && (
               <>
-                <dt>Role</dt>
+                <dt>{t('modal.role')}</dt>
                 <dd>{user.role}</dd>
               </>
             )}

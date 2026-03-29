@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './authStore';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const login = useAuthStore((s) => s.login);
@@ -24,9 +26,9 @@ export default function LoginPage() {
     <div className="auth-page">
       <div className="auth-card">
         <h1>PhiloGPT</h1>
-        <p className="auth-subtitle">Sign in to continue</p>
+        <p className="auth-subtitle">{t('auth.loginSubtitle')}</p>
         <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">{t('common.email')}</label>
           <input
             id="email"
             type="email"
@@ -36,7 +38,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
           />
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t('common.password')}</label>
           <input
             id="password"
             type="password"
@@ -49,11 +51,11 @@ export default function LoginPage() {
           />
           {error && <p className="auth-error">{error}</p>}
           <button type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? t('auth.signingIn') : t('auth.signIn')}
           </button>
         </form>
         <p className="auth-link">
-          Don&apos;t have an account? <Link to="/register">Create one</Link>
+          {t('auth.noAccount')} <Link to="/register">{t('auth.createOne')}</Link>
         </p>
       </div>
     </div>

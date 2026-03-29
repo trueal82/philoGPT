@@ -53,8 +53,20 @@ src/
 1. Clone the repository
 2. Install dependencies: `npm install`
 3. Set up environment variables in `.env` file
-4. Start MongoDB
+4. Start MongoDB via the project Mongo service: `./start-mongodb.sh`
 5. Run the application: `npm run dev`
+
+## MongoDB Ownership And Seeding
+
+- Seeding is owned by the top-level `mongodb/` module only.
+- The seed file lives at `mongodb/initDefaultData.ts`.
+- The Mongo container starts `mongod`, checks whether the configured DB is empty, and seeds only if empty.
+- The backend no longer performs any startup seeding.
+
+Useful commands:
+
+- `./start-mongodb.sh` - start MongoDB container with empty-check seed behavior.
+- `./start-mongodb.sh --purge` - drop app collections and reseed on startup.
 
 ## Environment Variables
 

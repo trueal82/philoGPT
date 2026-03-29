@@ -1,5 +1,6 @@
 import BotLocale, { IBotLocale } from '../models/BotLocale';
 import { IBot } from '../models/Bot';
+import { ISystemPrompt } from '../models/SystemPrompt';
 import { createLogger } from '../config/logger';
 
 const log = createLogger('prompt-localization');
@@ -15,7 +16,8 @@ export interface ResolvedBotLocale {
 
 /**
  * Resolve localized bot content by languageCode with fallback chain:
- *   exact match -> 'en-us' -> bot base fields
+ *   exact match -> 'en-us'
+ * Bot base fields no longer carry localizable content — a locale must exist.
  */
 export async function resolveLocale(
   bot: IBot,
@@ -33,9 +35,9 @@ export async function resolveLocale(
     log.debug({ botId: bot._id, languageCode: normalizedCode }, 'Exact locale match');
     return {
       systemPrompt: locale.systemPrompt,
-      personality: locale.personality || bot.personality || '',
-      name: locale.name || bot.name,
-      description: locale.description || bot.description || '',
+      personality: locale.personality || '',
+      name: locale.name || '',
+      description: locale.description || '',
       resolvedLanguageCode: normalizedCode,
       fallbackUsed: false,
     };
@@ -51,25 +53,73 @@ export async function resolveLocale(
       log.debug({ botId: bot._id, languageCode: normalizedCode, fallback: 'en-us' }, 'Locale fallback to en-us');
       return {
         systemPrompt: locale.systemPrompt,
-        personality: locale.personality || bot.personality || '',
-        name: locale.name || bot.name,
-        description: locale.description || bot.description || '',
+        personality: locale.personality || '',
+        name: locale.name || '',
+        description: locale.description || '',
         resolvedLanguageCode: 'en-us',
         fallbackUsed: true,
       };
     }
   }
 
-  // Final fallback: bot base fields
-  log.debug({ botId: bot._id, languageCode: normalizedCode, fallback: 'base' }, 'Locale fallback to bot base fields');
+  // Final fallback: pick any locale that exists for this bot
+  locale = await BotLocale.findOne({ botId: bot._id });
+  if (locale) {
+    log.debug({ botId: bot._id, languageCode: normalizedCode, fallback: locale.languageCode }, 'Locale fallback to first available');
+    return {
+      systemPrompt: locale.systemPrompt,
+      personality: locale.personality || '',
+      name: locale.name || '',
+      description: locale.description || '',
+      resolvedLanguageCode: locale.languageCode,
+      fallbackUsed: true,
+    };
+  }
+
+  // No locale at all — return empty (should not happen with properly seeded data)
+  log.warn({ botId: bot._id, languageCode: normalizedCode }, 'No locale found for bot');
   return {
-    systemPrompt: bot.systemPrompt,
-    personality: bot.personality || '',
-    name: bot.name,
-    description: bot.description || '',
-    resolvedLanguageCode: 'base',
+    systemPrompt: '',
+    personality: '',
+    name: '',
+    description: '',
+    resolvedLanguageCode: 'none',
     fallbackUsed: true,
   };
+}
+
+/**
+ * Resolve the global system prompt content for a given language.
+ * Fallback chain: exact locale → en-us → base content field.
+ */
+export function resolveSystemPromptContent(
+  prompt: ISystemPrompt | (Pick<ISystemPrompt, 'content' | 'locales'> & Record<string, unknown>),
+  languageCode: string,
+): string {
+  const normalized = languageCode.toLowerCase().trim();
+  const locales = prompt.locales;
+
+  if (locales) {
+    // Support both Map instances and plain objects (from .lean())
+    const get = (key: string): string | undefined =>
+      locales instanceof Map ? locales.get(key) : (locales as Record<string, string>)[key];
+
+    const exact = get(normalized);
+    if (exact) {
+      log.debug({ languageCode: normalized }, 'System prompt exact locale match');
+      return exact;
+    }
+
+    if (normalized !== 'en-us') {
+      const fallback = get('en-us');
+      if (fallback) {
+        log.debug({ languageCode: normalized, fallback: 'en-us' }, 'System prompt locale fallback');
+        return fallback;
+      }
+    }
+  }
+
+  return prompt.content;
 }
 
 /**

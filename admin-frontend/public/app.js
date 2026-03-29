@@ -561,13 +561,13 @@ async function loadBots() {
     data.bots.forEach((bot) => {
       tbody.appendChild(
         el('tr', {}, [
-          el('td', { textContent: bot.name }),
+          el('td', { textContent: bot.avatar || '🧠' }),
+          el('td', { textContent: bot.name || '' }),
           el('td', { textContent: bot.description || '' }),
-          el('td', { textContent: bot.personality || '' }),
           el('td', {}, [
             el('button', {
               className: 'btn btn-sm btn-outline-primary me-1',
-              onClick: () => editBot(bot),
+              onClick: () => showBotEditor(bot),
             }, [el('i', { className: 'fas fa-edit' }), ' Edit']),
             el('button', {
               className: 'btn btn-sm btn-outline-danger',
@@ -584,16 +584,16 @@ async function loadBots() {
         el('h2', {}, [el('i', { className: 'fas fa-robot' }), ' Bot Management']),
         el('button', {
           className: 'btn btn-primary',
-          onClick: () => showBotModal(),
+          onClick: () => showBotEditor(null),
         }, [el('i', { className: 'fas fa-plus' }), ' Add Bot']),
       ]),
       el('div', { className: 'table-responsive' }, [
         el('table', { className: 'table table-striped' }, [
           el('thead', {}, [
             el('tr', {}, [
+              el('th', { textContent: 'Avatar' }),
               el('th', { textContent: 'Name' }),
               el('th', { textContent: 'Description' }),
-              el('th', { textContent: 'Personality' }),
               el('th', { textContent: 'Actions' }),
             ]),
           ]),
@@ -607,86 +607,250 @@ async function loadBots() {
   }
 }
 
-async function showBotModal(bot = null) {
-  const modal = document.getElementById('botModal');
-  const bsModal = new bootstrap.Modal(modal);
+// ---------------------------------------------------------------------------
+// Bot Editor — unified full-page view with General + per-language tabs
+// ---------------------------------------------------------------------------
 
-  document.getElementById('botModalTitle').textContent = bot ? 'Edit Bot' : 'Add New Bot';
-  document.getElementById('botName').value = bot?.name || '';
-  document.getElementById('botDescription').value = bot?.description || '';
-  document.getElementById('botPersonality').value = bot?.personality || '';
-  document.getElementById('botSystemPrompt').value = bot?.systemPrompt || '';
-  document.getElementById('botAvatar').value = bot?.avatar || '';
+async function showBotEditor(bot) {
+  // Fetch languages, locales, subscriptions, LLM configs in parallel
+  let languages = [];
+  let existingLocales = [];
+  let subscriptions = [];
+  let llmConfigs = [];
 
-  // Populate subscriptions multi-select
-  const subSelect = document.getElementById('botSubscriptions');
-  subSelect.textContent = '';
   try {
-    const subRes = await apiFetch('/api/admin/subscriptions');
-    const subData = await subRes.json();
-    const selectedIds = (bot?.availableToSubscriptionIds || []).map(String);
-    (subData.subscriptions || []).forEach((sub) => {
-      const opt = el('option', { value: sub._id, textContent: sub.name });
-      if (selectedIds.includes(sub._id)) opt.selected = true;
-      subSelect.appendChild(opt);
-    });
-  } catch { /* ignore */ }
-
-  // Populate LLM config select
-  const llmSelect = document.getElementById('botLlmConfig');
-  llmSelect.textContent = '';
-  llmSelect.appendChild(el('option', { value: '', textContent: '— Select LLM Config —' }));
-  try {
-    const llmRes = await apiFetch('/api/admin/llm-configs');
-    const llmData = await llmRes.json();
-    const currentLlm = bot?.llmConfigId ? String(typeof bot.llmConfigId === 'object' ? bot.llmConfigId._id : bot.llmConfigId) : '';
-    (llmData.configs || []).forEach((cfg) => {
-      const opt = el('option', { value: cfg._id, textContent: `${cfg.name} (${cfg.provider} / ${cfg.model})` });
-      if (cfg._id === currentLlm) opt.selected = true;
-      llmSelect.appendChild(opt);
-    });
-  } catch { /* ignore */ }
-
-  const saveBtn = document.getElementById('saveBot');
-  saveBtn.replaceWith(saveBtn.cloneNode(true));
-  document.getElementById('saveBot').addEventListener('click', () => saveBot(bot?._id, bsModal));
-  bsModal.show();
-}
-
-function editBot(bot) {
-  showBotModal(bot);
-}
-
-async function saveBot(botId, bsModal) {
-  const subSelect = document.getElementById('botSubscriptions');
-  const availableToSubscriptionIds = Array.from(subSelect.selectedOptions).map((o) => o.value);
-
-  const payload = {
-    name: document.getElementById('botName').value.trim(),
-    description: document.getElementById('botDescription').value.trim(),
-    personality: document.getElementById('botPersonality').value.trim(),
-    systemPrompt: document.getElementById('botSystemPrompt').value.trim(),
-    avatar: document.getElementById('botAvatar').value.trim(),
-    availableToSubscriptionIds,
-    llmConfigId: document.getElementById('botLlmConfig').value || undefined,
-  };
-
-  if (!payload.name || !payload.systemPrompt) {
-    showAlert('warning', 'Name and System Prompt are required');
+    const fetches = [
+      apiFetch('/api/admin/languages'),
+      apiFetch('/api/admin/subscriptions'),
+      apiFetch('/api/admin/llm-configs'),
+    ];
+    if (bot) {
+      fetches.push(apiFetch(`/api/admin/bot-locales/${encodeURIComponent(bot._id)}`));
+    }
+    const responses = await Promise.all(fetches);
+    const [langData, subData, llmData] = await Promise.all(responses.slice(0, 3).map((r) => r.json()));
+    languages = (langData.languages || []).filter((l) => l.active);
+    subscriptions = subData.subscriptions || [];
+    llmConfigs = llmData.configs || [];
+    if (bot && responses[3]) {
+      const locData = await responses[3].json();
+      existingLocales = locData.locales || [];
+    }
+  } catch (err) {
+    console.error('showBotEditor fetch error:', err);
+    showAlert('danger', 'Error loading editor data');
     return;
   }
 
+  const localeMap = {};
+  existingLocales.forEach((loc) => { localeMap[loc.languageCode] = loc; });
+
+  // --- Build tabs ---
+  const navTabs = el('ul', { className: 'nav nav-tabs', role: 'tablist' });
+  const tabContent = el('div', { className: 'tab-content pt-3' });
+
+  // ===== General tab =====
+  const generalTabId = 'bot-tab-general';
+  const generalPaneId = 'bot-pane-general';
+  navTabs.appendChild(
+    el('li', { className: 'nav-item', role: 'presentation' }, [
+      el('a', {
+        className: 'nav-link active',
+        id: generalTabId,
+        href: `#${generalPaneId}`,
+        role: 'tab',
+        'aria-controls': generalPaneId,
+        'aria-selected': 'true',
+        'data-bs-toggle': 'tab',
+      }, [el('i', { className: 'fas fa-cog' }), ' General']),
+    ]),
+  );
+
+  // Avatar
+  const avatarInput = el('input', { type: 'text', className: 'form-control', id: 'botEditorAvatar' });
+  avatarInput.value = bot?.avatar || '';
+
+  // Subscriptions multi-select
+  const subSelect = el('select', { className: 'form-control', id: 'botEditorSubs', multiple: 'multiple', size: '4' });
+  const selectedSubIds = (bot?.availableToSubscriptionIds || []).map(String);
+  subscriptions.forEach((sub) => {
+    const opt = el('option', { value: sub._id, textContent: sub.name });
+    if (selectedSubIds.includes(sub._id)) opt.selected = true;
+    subSelect.appendChild(opt);
+  });
+
+  // LLM config select
+  const llmSelect = el('select', { className: 'form-control', id: 'botEditorLlm' });
+  llmSelect.appendChild(el('option', { value: '', textContent: '— Select LLM Config —' }));
+  const currentLlm = bot?.llmConfigId ? String(typeof bot.llmConfigId === 'object' ? bot.llmConfigId._id : bot.llmConfigId) : '';
+  llmConfigs.forEach((cfg) => {
+    const opt = el('option', { value: cfg._id, textContent: `${cfg.name} (${cfg.provider} / ${cfg.model})` });
+    if (cfg._id === currentLlm) opt.selected = true;
+    llmSelect.appendChild(opt);
+  });
+
+  const generalPane = el('div', {
+    className: 'tab-pane fade show active',
+    id: generalPaneId,
+    role: 'tabpanel',
+    'aria-labelledby': generalTabId,
+  }, [
+    el('div', { className: 'mb-3' }, [
+      el('label', { className: 'form-label', textContent: 'Avatar' }),
+      avatarInput,
+    ]),
+    el('div', { className: 'mb-3' }, [
+      el('label', { className: 'form-label', textContent: 'Available to Subscriptions' }),
+      subSelect,
+      el('small', { className: 'text-muted', textContent: 'Hold Ctrl/Cmd to select multiple' }),
+    ]),
+    el('div', { className: 'mb-3' }, [
+      el('label', { className: 'form-label', textContent: 'LLM Configuration' }),
+      llmSelect,
+      el('small', { className: 'text-muted', textContent: 'Required for the bot to produce responses' }),
+    ]),
+  ]);
+  tabContent.appendChild(generalPane);
+
+  // ===== Per-language tabs =====
+  const localizableFields = [
+    { key: 'name', label: 'Name', type: 'input' },
+    { key: 'description', label: 'Description', type: 'textarea', rows: 3 },
+    { key: 'personality', label: 'Personality', type: 'textarea', rows: 3 },
+    { key: 'systemPrompt', label: 'System Prompt', type: 'textarea', rows: 6 },
+  ];
+
+  languages.forEach((lang) => {
+    const tabId = `bot-tab-${lang.code}`;
+    const paneId = `bot-pane-${lang.code}`;
+    const existing = localeMap[lang.code];
+
+    const navLink = el('a', {
+      className: `nav-link${existing ? ' fw-bold' : ''}`,
+      id: tabId,
+      href: `#${paneId}`,
+      role: 'tab',
+      'aria-controls': paneId,
+      'aria-selected': 'false',
+      'data-bs-toggle': 'tab',
+    }, [
+      el('i', { className: 'fas fa-language' }),
+      ` ${lang.nativeName} (${lang.code})`,
+    ]);
+    navTabs.appendChild(el('li', { className: 'nav-item', role: 'presentation' }, [navLink]));
+
+    const fieldElements = [];
+    localizableFields.forEach((f) => {
+      const inputId = `bot-${lang.code}-${f.key}`;
+      // For existing bots: show locale value if it exists, otherwise empty
+      // For new bots: fields start empty
+      const value = existing?.[f.key] ?? '';
+      const label = el('label', { className: 'form-label', htmlFor: inputId, textContent: f.label });
+      let input;
+      if (f.type === 'textarea') {
+        input = el('textarea', { className: 'form-control', id: inputId, rows: String(f.rows || 3) });
+        input.value = value;
+      } else {
+        input = el('input', { type: 'text', className: 'form-control', id: inputId });
+        input.value = value;
+      }
+      fieldElements.push(el('div', { className: 'mb-3' }, [label, input]));
+    });
+
+    const pane = el('div', {
+      className: 'tab-pane fade',
+      id: paneId,
+      role: 'tabpanel',
+      'aria-labelledby': tabId,
+    }, fieldElements);
+    tabContent.appendChild(pane);
+  });
+
+  // ===== Save & Back buttons =====
+  const saveAllBtn = el('button', {
+    className: 'btn btn-primary me-2',
+    onClick: () => saveBotAll(bot?._id, languages, localizableFields),
+  }, [el('i', { className: 'fas fa-save' }), ' Save Everything']);
+
+  const backBtn = el('button', {
+    className: 'btn btn-outline-secondary',
+    onClick: () => loadBots(),
+  }, [el('i', { className: 'fas fa-arrow-left' }), ' Back to Bots']);
+
+  replaceChildren(
+    contentDiv,
+    el('div', { className: 'd-flex justify-content-between align-items-center mb-3' }, [
+      el('h2', {}, [
+        el('i', { className: 'fas fa-robot' }),
+        bot ? ` Edit Bot — ${bot.name || bot.avatar || bot._id}` : ' Add New Bot',
+      ]),
+      el('div', {}, [saveAllBtn, backBtn]),
+    ]),
+    navTabs,
+    tabContent,
+  );
+}
+
+async function saveBotAll(botId, languages, localizableFields) {
+  // Collect locale data from the first language tab to validate
+  const firstLang = languages[0];
+  if (!firstLang) {
+    showAlert('warning', 'No languages configured');
+    return;
+  }
+
+  const firstSystemPrompt = document.getElementById(`bot-${firstLang.code}-systemPrompt`)?.value.trim() || '';
+  const firstName = document.getElementById(`bot-${firstLang.code}-name`)?.value.trim() || '';
+
+  if (!firstName || !firstSystemPrompt) {
+    showAlert('warning', `Name and System Prompt are required on the ${firstLang.nativeName} tab`);
+    return;
+  }
+
+  const subSelect = document.getElementById('botEditorSubs');
+  const availableToSubscriptionIds = Array.from(subSelect.selectedOptions).map((o) => o.value);
+
+  const botPayload = {
+    avatar: document.getElementById('botEditorAvatar').value.trim(),
+    availableToSubscriptionIds,
+    llmConfigId: document.getElementById('botEditorLlm').value || undefined,
+  };
+
   try {
+    // Save or create the bot
     const url = botId ? `/api/bots/${botId}` : '/api/bots';
     const method = botId ? 'PUT' : 'POST';
-    const res = await apiFetch(url, { method, body: JSON.stringify(payload) });
-    if (res.ok) {
-      bsModal.hide();
-      loadBots();
-    } else {
-      const d = await res.json();
+    const botRes = await apiFetch(url, { method, body: JSON.stringify(botPayload) });
+    if (!botRes.ok) {
+      const d = await botRes.json();
       showAlert('danger', d.message || 'Error saving bot');
+      return;
     }
+    const botData = await botRes.json();
+    const savedBotId = botData.bot?._id || botId;
+
+    // Save locales for each language that has content
+    const localePromises = [];
+    for (const lang of languages) {
+      const localePayload = {};
+      let hasContent = false;
+      for (const f of localizableFields) {
+        const val = document.getElementById(`bot-${lang.code}-${f.key}`)?.value.trim() || '';
+        localePayload[f.key] = val;
+        if (val) hasContent = true;
+      }
+      if (hasContent && localePayload.systemPrompt) {
+        localePromises.push(
+          apiFetch(
+            `/api/admin/bot-locales/${encodeURIComponent(savedBotId)}/${encodeURIComponent(lang.code)}`,
+            { method: 'PUT', body: JSON.stringify(localePayload) },
+          ),
+        );
+      }
+    }
+    await Promise.all(localePromises);
+    showAlert('success', 'Bot and locales saved successfully');
+    loadBots();
   } catch {
     showAlert('danger', 'Error saving bot');
   }

@@ -1,4 +1,5 @@
 import { useState, useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   onSend: (content: string) => void;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function ChatInput({ onSend, disabled }: Props) {
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -48,7 +50,7 @@ export default function ChatInput({ onSend, disabled }: Props) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         onInput={handleInput}
-        placeholder="Send a message…"
+        placeholder={t('chat.inputPlaceholder')}
         rows={1}
         disabled={disabled}
         aria-label="Message input"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import type { Message as MessageType } from '@/shared/types';
 import * as api from '@/shared/api/endpoints';
 import { getSocket } from '@/shared/api/socket';
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function ChatThread({ sessionId }: Props) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [streamingContent, setStreamingContent] = useState('');
@@ -96,14 +98,14 @@ export default function ChatThread({ sessionId }: Props) {
   );
 
   if (isLoading) {
-    return <div className="chat-thread"><p className="chat-loading">Loading messages…</p></div>;
+    return <div className="chat-thread"><p className="chat-loading">{t('chat.loadingMessages')}</p></div>;
   }
 
   return (
     <div className="chat-thread">
       <div className="messages-container">
         {messages.length === 0 && !isStreaming && (
-          <p className="chat-empty">Send a message to start the conversation.</p>
+          <p className="chat-empty">{t('chat.emptyState')}</p>
         )}
         {messages.map((m) => (
           <MessageBubble key={m._id} message={m} />

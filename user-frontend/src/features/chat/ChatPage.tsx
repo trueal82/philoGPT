@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from './TopBar';
 import Toast from './Toast';
 import Sidebar from '@/features/sessions/Sidebar';
@@ -11,6 +12,7 @@ import { useUIStore } from '@/shared/stores/uiStore';
 export default function ChatPage() {
   const { sessionId } = useParams();
   const activeModal = useUIStore((s) => s.activeModal);
+  const { t } = useTranslation();
 
   return (
     <div className="chat-layout">
@@ -21,7 +23,7 @@ export default function ChatPage() {
           <ChatThread sessionId={sessionId} />
         ) : (
           <div className="chat-placeholder">
-            <h2>Select a conversation or start a new chat</h2>
+            <h2>{t('chat.placeholderText')}</h2>
           </div>
         )}
       </div>

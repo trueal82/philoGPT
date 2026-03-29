@@ -6,6 +6,7 @@ const log = createLogger('system-prompt');
 
 export interface ISystemPrompt extends Document {
   content: string;
+  locales: Map<string, string>;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -16,6 +17,7 @@ type ISystemPromptModel = Model<ISystemPrompt>;
 const systemPromptSchema = new Schema<ISystemPrompt, ISystemPromptModel>(
   {
     content: { type: String, required: true, maxlength: 50000 },
+    locales: { type: Map, of: { type: String, maxlength: 50000 }, default: new Map() },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

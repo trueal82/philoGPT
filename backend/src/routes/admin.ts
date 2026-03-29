@@ -275,6 +275,62 @@ router.put('/system-prompt', authenticateToken, requireAdmin, async (req: Reques
   }
 });
 
+// ---------------------------------------------------------------------------
+// System Prompt — per-language locale management
+// ---------------------------------------------------------------------------
+router.put('/system-prompt/locales/:languageCode', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const langCode = (req.params.languageCode as string).toLowerCase().trim();
+    if (!langCode || langCode.length > 10) {
+      res.status(400).json({ message: 'Invalid language code' });
+      return;
+    }
+    const { content } = req.body as { content: string };
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      res.status(400).json({ message: 'Content is required' });
+      return;
+    }
+    const prompt = await SystemPrompt.findOneAndUpdate(
+      { isActive: true },
+      { $set: { [`locales.${langCode}`]: content.trim() } },
+      { new: true, runValidators: true },
+    );
+    if (!prompt) {
+      res.status(404).json({ message: 'System prompt not found' });
+      return;
+    }
+    log.info({ languageCode: langCode }, 'System prompt locale upserted');
+    res.json({ prompt, message: 'System prompt locale saved successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error saving system prompt locale');
+    res.status(500).json({ message: 'Error saving system prompt locale' });
+  }
+});
+
+router.delete('/system-prompt/locales/:languageCode', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const langCode = (req.params.languageCode as string).toLowerCase().trim();
+    if (!langCode || langCode.length > 10) {
+      res.status(400).json({ message: 'Invalid language code' });
+      return;
+    }
+    const prompt = await SystemPrompt.findOneAndUpdate(
+      { isActive: true },
+      { $unset: { [`locales.${langCode}`]: '' } },
+      { new: true },
+    );
+    if (!prompt) {
+      res.status(404).json({ message: 'System prompt not found' });
+      return;
+    }
+    log.info({ languageCode: langCode }, 'System prompt locale deleted');
+    res.json({ prompt, message: 'System prompt locale deleted successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting system prompt locale');
+    res.status(500).json({ message: 'Error deleting system prompt locale' });
+  }
+});
+
 // Bots overview (for admin)
 router.get('/bots', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
