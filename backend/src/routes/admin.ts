@@ -166,7 +166,12 @@ router.post('/users/:id/unlock', authenticateToken, requireAdmin, async (req: Re
 // ---------------------------------------------------------------------------
 router.get('/llm-configs', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const configs = await LLMConfig.find().sort({ createdAt: -1 });
+    let configs = await LLMConfig.find().sort({ isActive: -1, createdAt: -1 });
+    if (configs.length > 0 && !configs.some((config: any) => config.isActive)) {
+      configs[0].set('isActive', true);
+      await configs[0].save();
+      configs = await LLMConfig.find().sort({ isActive: -1, createdAt: -1 });
+    }
     log.debug({ count: configs.length }, 'Fetched LLM configs');
     res.json({ configs });
   } catch (error) {
@@ -175,14 +180,37 @@ router.get('/llm-configs', authenticateToken, requireAdmin, async (_req: Request
   }
 });
 
+router.get('/llm-configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid config ID' });
+      return;
+    }
+    const config = await LLMConfig.findById(req.params.id);
+    if (!config) {
+      res.status(404).json({ message: 'LLM configuration not found' });
+      return;
+    }
+    res.json({ config });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching LLM config');
+    res.status(500).json({ message: 'Error fetching LLM config' });
+  }
+});
+
 router.post('/llm-configs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools } = req.body;
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
     if (!name || !provider || !VALID_PROVIDERS.includes(provider)) {
       res.status(400).json({ message: 'Name and a valid provider are required' });
       return;
     }
-    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools: !!supportsTools });
+    const hasExistingActive = await LLMConfig.exists({ isActive: true });
+    const shouldBeActive = isActive === true || !hasExistingActive;
+    if (shouldBeActive) {
+      await LLMConfig.updateMany({ isActive: true }, { isActive: false });
+    }
+    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools: !!supportsTools, isActive: shouldBeActive });
     await config.save();
     log.info({ configId: config._id, name, provider }, 'LLM config created');
     res.status(201).json({ config, message: 'LLM configuration created successfully' });
@@ -198,10 +226,14 @@ router.put('/llm-configs/:id', authenticateToken, requireAdmin, async (req: Requ
       res.status(400).json({ message: 'Invalid config ID' });
       return;
     }
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools } = req.body;
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
     const update: Record<string, unknown> = { name, provider, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty };
     if (apiKey) update.apiKey = apiKey;
     if (supportsTools !== undefined) update.supportsTools = !!supportsTools;
+    if (isActive !== undefined) update.isActive = !!isActive;
+    if (isActive === true) {
+      await LLMConfig.updateMany({ _id: { $ne: req.params.id }, isActive: true }, { isActive: false });
+    }
     const config = await LLMConfig.findByIdAndUpdate(
       req.params.id,
       update,
@@ -229,6 +261,13 @@ router.delete('/llm-configs/:id', authenticateToken, requireAdmin, async (req: R
     if (!config) {
       res.status(404).json({ message: 'LLM configuration not found' });
       return;
+    }
+    if ((config as any).isActive) {
+      const replacement = await LLMConfig.findOne().sort({ createdAt: -1 });
+      if (replacement) {
+        replacement.set('isActive', true);
+        await replacement.save();
+      }
     }
     log.info({ configId: req.params.id }, 'LLM config deleted');
     res.json({ message: 'LLM configuration deleted successfully' });
@@ -334,8 +373,19 @@ router.delete('/system-prompt/locales/:languageCode', authenticateToken, require
 // Bots overview (for admin)
 router.get('/bots', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const bots = await Bot.find().sort({ createdAt: -1 });
-    res.json({ bots });
+    const bots = await Bot.find().sort({ createdAt: -1 }).lean();
+    const botIds = bots.map((bot) => bot._id);
+    const locales = await BotLocale.find({
+      botId: { $in: botIds },
+      languageCode: 'en-us',
+    }).lean();
+    const localeMap = new Map(locales.map((locale) => [String(locale.botId), locale]));
+    const enrichedBots = bots.map((bot) => ({
+      ...bot,
+      name: localeMap.get(String(bot._id))?.name ?? '',
+      description: localeMap.get(String(bot._id))?.description ?? '',
+    }));
+    res.json({ bots: enrichedBots });
   } catch (error) {
     log.error({ err: error }, 'Error fetching bots');
     res.status(500).json({ message: 'Error fetching bots' });
@@ -428,6 +478,24 @@ router.get('/languages', authenticateToken, requireAdmin, async (_req: Request, 
   }
 });
 
+router.get('/languages/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid language ID' });
+      return;
+    }
+    const language = await Language.findById(req.params.id);
+    if (!language) {
+      res.status(404).json({ message: 'Language not found' });
+      return;
+    }
+    res.json({ language });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching language');
+    res.status(500).json({ message: 'Error fetching language' });
+  }
+});
+
 router.post('/languages', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const { code, name, nativeName, active, sortOrder } = req.body as {
@@ -511,6 +579,24 @@ router.get('/user-groups', authenticateToken, requireAdmin, async (_req: Request
   }
 });
 
+router.get('/user-groups/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid user group ID' });
+      return;
+    }
+    const userGroup = await UserGroup.findById(req.params.id);
+    if (!userGroup) {
+      res.status(404).json({ message: 'User group not found' });
+      return;
+    }
+    res.json({ userGroup });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching user group');
+    res.status(500).json({ message: 'Error fetching user group' });
+  }
+});
+
 router.post('/user-groups', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, active } = req.body as { name: string; description?: string; active?: boolean };
@@ -589,6 +675,24 @@ router.get('/subscriptions', authenticateToken, requireAdmin, async (_req: Reque
   } catch (error) {
     log.error({ err: error }, 'Error fetching subscriptions');
     res.status(500).json({ message: 'Error fetching subscriptions' });
+  }
+});
+
+router.get('/subscriptions/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid subscription ID' });
+      return;
+    }
+    const subscription = await Subscription.findById(req.params.id);
+    if (!subscription) {
+      res.status(404).json({ message: 'Subscription not found' });
+      return;
+    }
+    res.json({ subscription });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching subscription');
+    res.status(500).json({ message: 'Error fetching subscription' });
   }
 });
 
@@ -775,6 +879,28 @@ router.get('/sessions', authenticateToken, requireAdmin, async (req: Request, re
   }
 });
 
+router.get('/sessions/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    const session = await ChatSession.findById(req.params.id)
+      .populate('userId', 'email')
+      .populate('botId', 'avatar')
+      .lean();
+    if (!session) {
+      res.status(404).json({ message: 'Session not found' });
+      return;
+    }
+    const messageCount = await Message.countDocuments({ sessionId: req.params.id });
+    res.json({ session: { ...session, messageCount } });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching session');
+    res.status(500).json({ message: 'Error fetching session' });
+  }
+});
+
 router.get('/sessions/:id/messages', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     if (!isValidObjectId(req.params.id)) {
@@ -821,6 +947,24 @@ router.get('/tools', authenticateToken, requireAdmin, async (_req: Request, res:
   } catch (error) {
     log.error({ err: error }, 'Error fetching tools');
     res.status(500).json({ message: 'Error fetching tools' });
+  }
+});
+
+router.get('/tools/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid tool ID' });
+      return;
+    }
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) {
+      res.status(404).json({ message: 'Tool not found' });
+      return;
+    }
+    res.json({ tool });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching tool');
+    res.status(500).json({ message: 'Error fetching tool' });
   }
 });
 

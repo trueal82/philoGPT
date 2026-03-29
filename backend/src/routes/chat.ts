@@ -18,6 +18,36 @@ import BotLocale from '../models/BotLocale';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
+function toLocaleTag(languageCode: string): string {
+  const [language, region] = languageCode.toLowerCase().trim().split('-');
+  if (!language) return 'en-US';
+  if (!region) return language;
+  return `${language}-${region.toUpperCase()}`;
+}
+
+function buildSessionTitle(botName: string, createdAt: Date, languageCode: string): string {
+  const formattedDate = new Intl.DateTimeFormat(toLocaleTag(languageCode), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(createdAt);
+  return `${botName} - ${formattedDate}`.slice(0, 200);
+}
+
+async function getBotDisplayName(botId: string, languageCode: string): Promise<string> {
+  const normalized = languageCode.toLowerCase().trim();
+  const locales = await BotLocale.find({
+    botId,
+    languageCode: { $in: [normalized, 'en-us'] },
+  }).lean();
+
+  const exact = locales.find((locale) => locale.languageCode === normalized)?.name?.trim();
+  if (exact) return exact;
+
+  const fallback = locales.find((locale) => locale.languageCode === 'en-us')?.name?.trim();
+  return fallback || 'Chat';
+}
+
 /** Enrich populated sessions/memories with locale-resolved bot name. */
 async function resolveBotNames(
   items: Array<{ botId?: { _id: unknown; avatar?: string } | unknown }>,
@@ -74,7 +104,19 @@ router.get('/sessions', authenticateToken, async (req: Request, res: Response): 
       .populate('botId', 'avatar')
       .sort({ updatedAt: -1 });
     await resolveBotNames(sessions as unknown as Array<{ botId?: Record<string, unknown> }>, user.languageCode || 'en-us');
-    res.json({ sessions });
+    const normalizedLanguageCode = user.languageCode || 'en-us';
+    const sessionsWithTitles = sessions.map((session) => {
+      const sessionObject = session.toObject();
+      const botObject = sessionObject.botId;
+      const botName = botObject && typeof botObject === 'object' && 'name' in botObject && typeof botObject.name === 'string'
+        ? botObject.name
+        : '';
+      return {
+        ...sessionObject,
+        title: sessionObject.title || buildSessionTitle(botName || 'Chat', session.createdAt, normalizedLanguageCode),
+      };
+    });
+    res.json({ sessions: sessionsWithTitles });
   } catch (error) {
     log.error({ err: error }, 'Error fetching chat sessions');
     res.status(500).json({ message: 'Error fetching chat sessions' });
@@ -109,6 +151,11 @@ router.post('/sessions', authenticateToken, async (req: Request, res: Response):
     const session = new ChatSession({
       userId: user._id,
       botId,
+      title: buildSessionTitle(
+        await getBotDisplayName(botId, user.languageCode || 'en-us'),
+        new Date(),
+        user.languageCode || 'en-us',
+      ),
       lockedLanguageCode: user.languageCode || 'en-us',
     });
     await session.save();

@@ -56,9 +56,9 @@ I have successfully implemented a complete philosophical chatbot platform with b
 - `src/routes/` - API endpoints for all functionality
 - `src/middleware/auth.js` - Authentication and authorization middleware
 - `src/config/passport.js` - OAuth configuration
-- `admin-frontend/index.html` - Main admin interface
-- `admin-frontend/app.js` - Admin interface JavaScript logic
-- `admin-frontend/styles.css` - Custom admin styling
+- `admin-frontend-new/src/App.tsx` - Main admin interface (React-admin)
+- `admin-frontend-new/src/dataProvider.ts` - Admin API data provider
+- `admin-frontend-new/src/authProvider.ts` - Admin authentication provider
 - `mongodb/initDefaultData.ts` - Single script to seed all initial data (admin user, languages, bots, tools, system prompt)
 - `package.json` - Added admin server and initialization scripts
 - `.env` - Environment configuration file

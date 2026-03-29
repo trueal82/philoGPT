@@ -104,17 +104,17 @@ export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
     temperature: 0.7,
     maxTokens: 2048,
     supportsTools: true,
+    isActive: true,
   });
   await defaultLLM.save();
   log.info('Created demo LLM configuration (Local Ollama)');
 
   // --- Bot ---
   const defaultBot = new Bot({
-    llmConfigId: defaultLLM._id,
     availableToSubscriptionIds: [defaultSubscription._id],
   });
   await defaultBot.save();
-  log.info({ llmConfigId: defaultLLM._id }, 'Created demo bot');
+  log.info('Created demo bot');
 
   // --- Bot Locales ---
   const botLocaleEnUs = new BotLocale({
@@ -456,7 +456,6 @@ export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
   for (const p of philosophers) {
     const bot = new Bot({
       avatar: p.avatar,
-      llmConfigId: defaultLLM._id,
       availableToSubscriptionIds: [defaultSubscription._id],
     });
     await bot.save();

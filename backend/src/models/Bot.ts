@@ -1,9 +1,8 @@
-/** Bot.ts — Mongoose model for philosopher bots (avatar, LLM config, subscriptions). Localizable fields live in BotLocale. */
+/** Bot.ts — Mongoose model for philosopher bots (avatar, subscriptions). Localizable fields live in BotLocale. */
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBot extends Document {
   avatar?: string;
-  llmConfigId?: Types.ObjectId;
   availableToSubscriptionIds: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -12,7 +11,6 @@ export interface IBot extends Document {
 const botSchema = new Schema<IBot>(
   {
     avatar: { type: String, maxlength: 2048, default: '🧠' },
-    llmConfigId: { type: Schema.Types.ObjectId, ref: 'LLMConfig' },
     availableToSubscriptionIds: [
       { type: Schema.Types.ObjectId, ref: 'Subscription' },
     ],

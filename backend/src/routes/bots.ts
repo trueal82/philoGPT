@@ -2,7 +2,7 @@
  * bots.ts — Bot CRUD routes.
  *
  * Localizable fields (name, description, personality, systemPrompt) live in
- * BotLocale — the Bot document only stores technical fields (avatar, llmConfigId,
+ * BotLocale — the Bot document only stores technical fields (avatar,
  * availableToSubscriptionIds).  GET routes resolve the user's locale and merge
  * name / description into the response so consumers get a flat object.
  *
@@ -117,12 +117,11 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
 
 router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
+    const { avatar, availableToSubscriptionIds } = req.body as {
       avatar?: string;
       availableToSubscriptionIds?: string[];
-      llmConfigId?: string;
     };
-    const bot = new Bot({ avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined });
+    const bot = new Bot({ avatar, availableToSubscriptionIds });
     await bot.save();
     log.info({ botId: bot._id }, 'Bot created');
     res.status(201).json({ bot, message: 'Bot created successfully' });
@@ -138,14 +137,13 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: Request, res: Re
       res.status(400).json({ message: 'Invalid bot ID' });
       return;
     }
-    const { avatar, availableToSubscriptionIds, llmConfigId } = req.body as {
+    const { avatar, availableToSubscriptionIds } = req.body as {
       avatar?: string;
       availableToSubscriptionIds?: string[];
-      llmConfigId?: string;
     };
     const bot = await Bot.findByIdAndUpdate(
       req.params.id,
-      { avatar, availableToSubscriptionIds, llmConfigId: llmConfigId || undefined },
+      { avatar, availableToSubscriptionIds },
       { new: true, runValidators: true },
     );
     if (!bot) {

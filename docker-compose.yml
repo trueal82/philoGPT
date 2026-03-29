@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   admin-frontend:
-    build: ./admin-frontend
+    build: ./admin-frontend-new
     ports:
       - "${ADMIN_PORT:-3001}:3001"
     environment:

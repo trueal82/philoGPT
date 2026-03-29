@@ -9,7 +9,17 @@ function sessionLabel(session: ChatSession): string {
   const bot = session.botId as Bot | undefined;
   const name = typeof session.botId === 'object' ? bot?.name : undefined;
   if (session.title) return session.title;
-  if (name) return name;
+  if (name) {
+    const startedAt = new Date(session.createdAt);
+    const formattedDate = Number.isNaN(startedAt.getTime())
+      ? ''
+      : startedAt.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+    return formattedDate ? `${name} - ${formattedDate}` : name;
+  }
   return '';
 }
 

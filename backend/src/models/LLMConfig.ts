@@ -1,5 +1,5 @@
 /** LLMConfig.ts — LLM provider configuration (model, API URL, temperature, tool support, etc.). */
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Model } from 'mongoose';
 
 export interface ILLMConfig {
   name: string;
@@ -13,11 +13,14 @@ export interface ILLMConfig {
   frequencyPenalty?: number;
   presencePenalty?: number;
   supportsTools: boolean;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const llmConfigSchema = new Schema<ILLMConfig>(
+type ILLMConfigModel = Model<ILLMConfig>;
+
+const llmConfigSchema = new Schema<ILLMConfig, ILLMConfigModel>(
   {
     name: { type: String, required: true, unique: true, trim: true, maxlength: 100 },
     provider: {
@@ -34,8 +37,17 @@ const llmConfigSchema = new Schema<ILLMConfig>(
     frequencyPenalty: { type: Number, min: -2, max: 2 },
     presencePenalty: { type: Number, min: -2, max: 2 },
     supportsTools: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
 
-export default mongoose.model<ILLMConfig>('LLMConfig', llmConfigSchema);
+llmConfigSchema.pre('save', async function () {
+  if (this.isActive) {
+    await LLMConfig.updateMany({ _id: { $ne: (this as any)._id }, isActive: true }, { isActive: false });
+  }
+});
+
+const LLMConfig = mongoose.model<ILLMConfig, ILLMConfigModel>('LLMConfig', llmConfigSchema);
+
+export default LLMConfig;

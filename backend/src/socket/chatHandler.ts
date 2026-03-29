@@ -126,21 +126,18 @@ async function handleChatSend(
   const trimmedContent = content.trim();
 
   try {
-    // --- Verify session ownership & populate bot + LLM config ---
+    // --- Verify session ownership and populate bot ---
     const session = await ChatSession.findOne({
       _id: sessionId,
       userId: (user as IUser & { _id: Types.ObjectId })._id,
-    }).populate<{ botId: typeof Bot.prototype }>({
-      path: 'botId',
-      populate: { path: 'llmConfigId' },
-    });
+    }).populate<{ botId: typeof Bot.prototype }>('botId');
 
     if (!session) {
       socket.emit('chat:error', { sessionId, error: 'Session not found' });
       return;
     }
 
-    const bot = session.botId as unknown as typeof Bot.prototype & { llmConfigId?: typeof LLMConfig.prototype };
+    const bot = session.botId as unknown as typeof Bot.prototype;
     const botIdStr = String((session.botId as any)?._id ?? session.botId ?? '');
     const userIdStr = String((user as IUser & { _id: Types.ObjectId })._id);
 
@@ -150,11 +147,21 @@ async function handleChatSend(
     socket.emit('chat:user_message', { sessionId, message: userMessage });
     socketLog.debug('User message saved and echoed');
 
-    // --- Ensure bot has an LLM config ---
-    if (!bot.llmConfigId) {
+    let llmConfig = await LLMConfig.findOne({ isActive: true }).lean();
+    if (!llmConfig) {
+      const fallbackConfig = await LLMConfig.findOne().sort({ createdAt: -1 });
+      if (fallbackConfig) {
+        fallbackConfig.set('isActive', true);
+        await fallbackConfig.save();
+        llmConfig = fallbackConfig.toObject() as any;
+      }
+    }
+
+    // --- Ensure there is an active LLM config ---
+    if (!llmConfig) {
       socket.emit('chat:error', {
         sessionId,
-        error: 'No LLM config assigned to this bot. Please configure one in the admin panel.',
+        error: 'No active LLM config found. Please activate one in the admin panel.',
       });
       return;
     }
@@ -168,11 +175,10 @@ async function handleChatSend(
     const resolved = await resolveLocale(bot as any, lockedLang);
 
     // --- Fetch enabled tools ---
-    const llmConfig = bot.llmConfigId as unknown as ILLMConfig;
     let toolDefs: ReturnType<typeof buildOllamaToolDefinitions> | undefined;
     let enabledToolsList: Awaited<ReturnType<typeof getEnabledTools>> = [];
 
-    if (llmConfig.supportsTools) {
+    if ((llmConfig as ILLMConfig).supportsTools) {
       enabledToolsList = await getEnabledTools();
       if (enabledToolsList.length > 0) {
         toolDefs = buildOllamaToolDefinitions(enabledToolsList);
@@ -210,7 +216,7 @@ async function handleChatSend(
       socket,
       socketLog,
       sessionId,
-      llmConfig,
+      llmConfig as ILLMConfig,
       contextMessages,
       toolDefs,
       lockedLang,

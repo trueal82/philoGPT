@@ -13,12 +13,13 @@ PhiloGPT is a full-stack multi-bot chat platform with:
 .
 ├── backend/             # TypeScript API + Socket.IO + seed logic
 ├── user-frontend/       # React/Vite chat UI + runtime config server
-├── admin-frontend/      # Admin UI + runtime config server
+├── admin-frontend/      # Legacy admin UI (kept for reference)
+├── admin-frontend-new/  # Active admin UI (React-admin) + runtime config server
 ├── docker-compose.yml   # Service topology (parameterized via root .env)
 ├── .env.example         # Deployment variable template
 ├── start-backend.sh
 ├── start-user-frontend.sh
-├── start-frontend.sh    # Starts admin frontend
+├── start-admin.sh       # Starts active admin frontend
 ├── start-mongodb.sh
 └── SYNOLOGY.md          # Synology deployment guide
 ```
@@ -93,14 +94,14 @@ Run services in separate terminals from repo root:
 ./start-mongodb.sh
 ./start-backend.sh
 ./start-user-frontend.sh
-./start-frontend.sh
+./start-admin.sh
 ```
 
 Notes:
 
 - `start-backend.sh` runs from `backend/`, so backend env vars must be available there (for example via `backend/.env` or exported shell variables).
 - At minimum, backend requires `JWT_SECRET`; typically you also set `MONGODB_URI` and `ALLOWED_ORIGINS`.
-- `start-frontend.sh` starts admin frontend on `3001`.
+- `start-admin.sh` starts the active admin frontend on `3001`.
 - `start-user-frontend.sh` starts user frontend dev server.
 - `start-backend.sh` starts backend in watch mode on `5001`.
 
@@ -157,7 +158,7 @@ npm run preview
 npm run typecheck
 ```
 
-From `admin-frontend/`:
+From `admin-frontend-new/`:
 
 ```bash
 npm start
