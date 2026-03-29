@@ -44,6 +44,11 @@ interface LocaleFormState {
   personality: string;
 }
 
+const MAX_NAME_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_PERSONALITY_LENGTH = 2000;
+const MAX_SYSTEM_PROMPT_LENGTH = 10000;
+
 function createEmptyLocale(languageCode = ''): LocaleFormState {
   return {
     languageCode,
@@ -52,6 +57,22 @@ function createEmptyLocale(languageCode = ''): LocaleFormState {
     description: '',
     personality: '',
   };
+}
+
+function getLocaleLengthError(locale: LocaleFormState): string | null {
+  if (locale.name.length > MAX_NAME_LENGTH) {
+    return `name exceeds ${MAX_NAME_LENGTH} characters`;
+  }
+  if (locale.description.length > MAX_DESCRIPTION_LENGTH) {
+    return `description exceeds ${MAX_DESCRIPTION_LENGTH} characters`;
+  }
+  if (locale.personality.length > MAX_PERSONALITY_LENGTH) {
+    return `personality exceeds ${MAX_PERSONALITY_LENGTH} characters`;
+  }
+  if (locale.systemPrompt.length > MAX_SYSTEM_PROMPT_LENGTH) {
+    return `systemPrompt exceeds ${MAX_SYSTEM_PROMPT_LENGTH} characters`;
+  }
+  return null;
 }
 
 function BotLocalesManager() {
@@ -110,6 +131,11 @@ function BotLocalesManager() {
       notify('languageCode and systemPrompt are required', { type: 'warning' });
       return;
     }
+    const lengthError = getLocaleLengthError(locale);
+    if (lengthError) {
+      notify(lengthError, { type: 'warning' });
+      return;
+    }
     try {
       await dataProvider.saveBotLocale(record.id, locale.languageCode, {
         name: locale.name || undefined,
@@ -127,6 +153,11 @@ function BotLocalesManager() {
   const handleCreate = async () => {
     if (!createForm.languageCode || !createForm.systemPrompt) {
       notify('languageCode and systemPrompt are required', { type: 'warning' });
+      return;
+    }
+    const lengthError = getLocaleLengthError(createForm);
+    if (lengthError) {
+      notify(lengthError, { type: 'warning' });
       return;
     }
     try {
@@ -205,6 +236,8 @@ function BotLocalesManager() {
                   value={activeLocale.name}
                   onChange={(e) => handleLocaleFieldChange(activeLocale.languageCode, 'name', e.target.value)}
                   fullWidth
+                  error={activeLocale.name.length > MAX_NAME_LENGTH}
+                  helperText={`${activeLocale.name.length}/${MAX_NAME_LENGTH} chars`}
                 />
                 <TextField
                   label="Description"
@@ -213,6 +246,8 @@ function BotLocalesManager() {
                   fullWidth
                   multiline
                   minRows={3}
+                  error={activeLocale.description.length > MAX_DESCRIPTION_LENGTH}
+                  helperText={`${activeLocale.description.length}/${MAX_DESCRIPTION_LENGTH} chars`}
                 />
                 <TextField
                   label="Personality"
@@ -221,6 +256,8 @@ function BotLocalesManager() {
                   fullWidth
                   multiline
                   minRows={4}
+                  error={activeLocale.personality.length > MAX_PERSONALITY_LENGTH}
+                  helperText={`${activeLocale.personality.length}/${MAX_PERSONALITY_LENGTH} chars`}
                 />
                 <TextField
                   label="System Prompt"
@@ -229,6 +266,8 @@ function BotLocalesManager() {
                   fullWidth
                   multiline
                   minRows={8}
+                  error={activeLocale.systemPrompt.length > MAX_SYSTEM_PROMPT_LENGTH}
+                  helperText={`${activeLocale.systemPrompt.length}/${MAX_SYSTEM_PROMPT_LENGTH} chars`}
                 />
                 <Stack direction="row" spacing={1}>
                   <Button variant="contained" onClick={() => handleSaveExisting(activeLocale)}>
@@ -265,6 +304,8 @@ function BotLocalesManager() {
                 value={createForm.name}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
                 fullWidth
+                error={createForm.name.length > MAX_NAME_LENGTH}
+                helperText={`${createForm.name.length}/${MAX_NAME_LENGTH} chars`}
               />
               <TextField
                 label="Description"
@@ -273,6 +314,8 @@ function BotLocalesManager() {
                 fullWidth
                 multiline
                 minRows={3}
+                error={createForm.description.length > MAX_DESCRIPTION_LENGTH}
+                helperText={`${createForm.description.length}/${MAX_DESCRIPTION_LENGTH} chars`}
               />
               <TextField
                 label="Personality"
@@ -281,6 +324,8 @@ function BotLocalesManager() {
                 fullWidth
                 multiline
                 minRows={4}
+                error={createForm.personality.length > MAX_PERSONALITY_LENGTH}
+                helperText={`${createForm.personality.length}/${MAX_PERSONALITY_LENGTH} chars`}
               />
               <TextField
                 label="System Prompt"
@@ -289,6 +334,8 @@ function BotLocalesManager() {
                 fullWidth
                 multiline
                 minRows={8}
+                error={createForm.systemPrompt.length > MAX_SYSTEM_PROMPT_LENGTH}
+                helperText={`${createForm.systemPrompt.length}/${MAX_SYSTEM_PROMPT_LENGTH} chars`}
               />
             </Stack>
           </DialogContent>
