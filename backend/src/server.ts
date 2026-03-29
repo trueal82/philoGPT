@@ -22,7 +22,6 @@ import authRoutes from './routes/auth';
 import botRoutes from './routes/bots';
 import chatRoutes from './routes/chat';
 import adminRoutes from './routes/admin';
-import playgroundRoutes from './routes/playground';
 import { Server as SocketIOServer } from 'socket.io';
 import { registerChatHandler } from './socket/chatHandler';
 import { seedOnStartup } from './scripts/seedOnStartup';
@@ -137,7 +136,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/bots', botRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/playground', playgroundRoutes);
 
 // ---------------------------------------------------------------------------
 // Global error handler — never leak stack traces to the client

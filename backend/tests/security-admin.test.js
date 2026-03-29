@@ -76,43 +76,4 @@ describe('Admin endpoints — admin user', () => {
   });
 });
 
-describe('Playground endpoints — admin only', () => {
-  it('GET /api/playground/bots returns 401 without token', async () => {
-    const res = await request(app).get('/api/playground/bots');
-    expect(res.status).toBe(401);
-  });
 
-  it('GET /api/playground/bots returns 403 for normal user', async () => {
-    const { token } = await createUser();
-    const res = await request(app)
-      .get('/api/playground/bots')
-      .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(403);
-  });
-
-  it('GET /api/playground/bots returns 200 for admin', async () => {
-    const { token } = await createAdmin();
-    const res = await request(app)
-      .get('/api/playground/bots')
-      .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
-  });
-
-  it('POST /api/playground/sessions returns 403 for normal user', async () => {
-    const { token } = await createUser();
-    const res = await request(app)
-      .post('/api/playground/sessions')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ botId: '000000000000000000000000' });
-    expect(res.status).toBe(403);
-  });
-
-  it('POST /api/playground/messages returns 403 for normal user', async () => {
-    const { token } = await createUser();
-    const res = await request(app)
-      .post('/api/playground/messages')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ botId: '000000000000000000000000', message: 'hello' });
-    expect(res.status).toBe(403);
-  });
-});

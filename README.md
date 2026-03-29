@@ -129,7 +129,6 @@ The project includes automated security integration tests covering:
 
 - **Authentication boundaries** — registration, login, locked accounts, JWT validation
 - **Admin/user separation** — all admin endpoints reject unauthenticated and non-admin users
-- **Playground protection** — admin-only enforcement on playground routes
 - **Data ownership** — users cannot access other users' sessions, messages, or memories
 - **Bot entitlement** — subscription-based bot access control
 - **OWASP checks** — IDOR, role escalation, input validation, invalid ObjectIds, security headers
@@ -170,7 +169,6 @@ npm start
 - `/api/bots`: bot catalog and bot configuration
 - `/api/chat`: chat sessions and messages
 - `/api/admin`: admin-only management endpoints
-- `/api/playground`: admin-only prompt testing playground
 - `/health`: health check endpoint
 
 ## Deployment
