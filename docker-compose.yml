@@ -2,19 +2,21 @@ version: '3.8'
 
 # All deployment values come from the root .env file (cp .env.example .env).
 # Variable syntax: ${VAR} — substituted by Compose from .env at startup.
+# docker-compose.yml never needs to be edited directly.
 
 services:
   backend:
     build: ./backend
     ports:
-      - "5001:5001"
+      - "${BACKEND_PORT:-5001}:5001"
     environment:
       - MONGODB_URI=mongodb://mongo:27017/philogpt
       - PORT=5001
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - JWT_SECRET=${JWT_SECRET}
       - ALLOWED_ORIGINS=${FRONTEND_URL},${ADMIN_URL}
-      - SEED_ON_EMPTY_DB=true
+      - SEED_ON_EMPTY_DB=${SEED_ON_EMPTY_DB:-true}
+      - PURGE_AND_RESEED=${PURGE_AND_RESEED:-false}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       # --- Optional OAuth (set in .env to enable) ---
@@ -29,7 +31,7 @@ services:
   admin-frontend:
     build: ./admin-frontend
     ports:
-      - "3001:3001"
+      - "${ADMIN_PORT:-3001}:3001"
     environment:
       - BACKEND_URL=${API_URL}
     restart: unless-stopped
@@ -37,7 +39,7 @@ services:
   user-frontend:
     build: ./user-frontend
     ports:
-      - "3002:3002"
+      - "${FRONTEND_PORT:-3002}:3002"
     environment:
       - BACKEND_URL=${API_URL}
       - SOCKET_URL=${API_URL}
@@ -46,7 +48,7 @@ services:
   mongo:
     image: mongo:latest
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped

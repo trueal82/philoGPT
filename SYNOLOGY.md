@@ -53,15 +53,19 @@ nano .env
 
 > **Why `FRONTEND_URL` / `ADMIN_URL`?** Compose injects them into `ALLOWED_ORIGINS` on the backend, so CORS is configured automatically from the same values. `API_URL` flows into both frontend services as `BACKEND_URL`/`SOCKET_URL` — the browser uses it to reach the API, so it must be a public domain, not a Docker-internal hostname.
 
-**Values that work out of the box (optional overrides):**
+**Optional overrides (defaults shown):**
 
 | Variable | Default | Notes |
 |---|---|---|
+| `BACKEND_PORT` | `5001` | Host port for the backend — change if it conflicts with DSM or other services |
+| `FRONTEND_PORT` | `3002` | Host port for the user frontend |
+| `ADMIN_PORT` | `3001` | Host port for the admin frontend |
+| `MONGO_PORT` | `27017` | Host port for MongoDB |
+| `SEED_ON_EMPTY_DB` | `true` | Seeds the database on first start if it is empty |
+| `PURGE_AND_RESEED` | `false` | Set to `true` **once** to wipe and reseed, then back to `false` |
 | `LOG_LEVEL` | `info` | Set to `debug` for verbose output |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(blank)* | OAuth — leave empty to disable |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | *(blank)* | OAuth — leave empty to disable |
-
-> **Important:** Set `PURGE_AND_RESEED=true` in `.env` only when you intentionally want to wipe and reseed the database. Remove it again after the first run.
 
 > **Security:** `.env` is gitignored and never committed. `.env.example` (committed, no real secrets) serves as the canonical reference for all variables.
 
@@ -194,11 +198,11 @@ Docker Compose will only restart containers whose images have changed.
 
 ## 6. Resetting the database
 
-To wipe all application data and reseed with defaults, temporarily add `PURGE_AND_RESEED=true` to `.env`, restart the backend, then remove it:
+To wipe all application data and reseed with defaults, set `PURGE_AND_RESEED=true` in `.env`, restart the backend, then set it back to `false`:
 
 ```bash
-# 1. Add the flag
-echo "PURGE_AND_RESEED=true" >> /volume1/philoGPT/.env
+# 1. Enable the purge flag
+sed -i 's/^PURGE_AND_RESEED=.*/PURGE_AND_RESEED=true/' /volume1/philoGPT/.env
 
 # 2. Restart the backend so it runs the purge + reseed
 docker compose up -d backend
@@ -206,9 +210,8 @@ docker compose up -d backend
 # 3. Confirm seeding completed
 docker compose logs backend --tail=20
 
-# 4. Remove the flag
-sed -i '/^PURGE_AND_RESEED/d' /volume1/philoGPT/.env
-docker compose up -d backend
+# 4. Disable the flag so the next restart does not purge again
+sed -i 's/^PURGE_AND_RESEED=.*/PURGE_AND_RESEED=false/' /volume1/philoGPT/.env
 ```
 
 ---
