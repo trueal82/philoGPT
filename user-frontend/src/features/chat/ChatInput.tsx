@@ -60,7 +60,6 @@ export default function ChatInput({ onSend, disabled }: Props) {
         onInput={handleInput}
         placeholder={t('chat.inputPlaceholder')}
         rows={1}
-        disabled={disabled}
         aria-label="Message input"
       />
       <button
