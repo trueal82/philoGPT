@@ -1,4 +1,4 @@
-import { useState, useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -10,6 +10,13 @@ export default function ChatInput({ onSend, disabled }: Props) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Re-focus when the input becomes enabled (i.e. response finished)
+  useEffect(() => {
+    if (!disabled) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled]);
 
   const submit = () => {
     const trimmed = text.trim();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { Message as MessageType } from '@/shared/types';
@@ -17,6 +17,7 @@ export default function ChatThread({ sessionId }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -29,9 +30,14 @@ export default function ChatThread({ sessionId }: Props) {
 
   const messages = data ?? [];
 
-  // Auto-scroll on new messages or streaming updates
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Auto-scroll to bottom on new messages, streaming tokens, or waiting state.
+  // Use 'instant' during streaming so rapid token updates don't queue competing
+  // smooth scrolls that never reach the bottom.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages.length, streamingContent, isWaiting]);
 
   // Socket event handlers
@@ -103,7 +109,7 @@ export default function ChatThread({ sessionId }: Props) {
 
   return (
     <div className="chat-thread">
-      <div className="messages-container">
+      <div className="messages-container" ref={containerRef}>
         {messages.length === 0 && !isStreaming && (
           <p className="chat-empty">{t('chat.emptyState')}</p>
         )}

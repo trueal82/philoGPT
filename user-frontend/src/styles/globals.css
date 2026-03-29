@@ -991,4 +991,12 @@ a:hover { text-decoration: underline; }
   .top-bar-title {
     font-size: 0.95rem;
   }
+
+  /* iOS Safari auto-zooms inputs with font-size < 16px — force 16px minimum */
+  .chat-textarea,
+  .form-input,
+  .auth-card input,
+  .language-select {
+    font-size: 16px;
+  }
 }
