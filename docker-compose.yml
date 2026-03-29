@@ -10,6 +10,9 @@ services:
     environment:
       - MONGODB_URI=mongodb://mongo:27017/philogpt
       - LOG_LEVEL=info
+      - SEED_ON_EMPTY_DB=true
+      - ADMIN_EMAIL=admin@example.com
+      - ADMIN_PASSWORD=nimda123
     depends_on:
       - mongo
     restart: unless-stopped
@@ -25,14 +28,9 @@ services:
     restart: unless-stopped
 
   mongo:
-    build:
-      context: .
-      dockerfile: mongodb/Dockerfile
+    image: mongo:latest
     ports:
       - "27017:27017"
-    environment:
-      - MONGO_DB=philogpt
-      - PURGE=false
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped

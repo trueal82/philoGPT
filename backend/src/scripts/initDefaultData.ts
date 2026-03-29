@@ -1,17 +1,17 @@
 /** initDefaultData.ts — Seeds the database with default admin user, bots, tools, and config on first run. */
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import User from '../backend/src/models/User';
-import Bot from '../backend/src/models/Bot';
-import LLMConfig from '../backend/src/models/LLMConfig';
-import Language from '../backend/src/models/Language';
-import UserGroup from '../backend/src/models/UserGroup';
-import Subscription from '../backend/src/models/Subscription';
-import BotLocale from '../backend/src/models/BotLocale';
-import Tool from '../backend/src/models/Tool';
-import SystemPrompt from '../backend/src/models/SystemPrompt';
-import { createLogger } from '../backend/src/config/logger';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, MONGODB_URI } from '../backend/src/config/seedConfig';
+import User from '../models/User';
+import Bot from '../models/Bot';
+import LLMConfig from '../models/LLMConfig';
+import Language from '../models/Language';
+import UserGroup from '../models/UserGroup';
+import Subscription from '../models/Subscription';
+import BotLocale from '../models/BotLocale';
+import Tool from '../models/Tool';
+import SystemPrompt from '../models/SystemPrompt';
+import { createLogger } from '../config/logger';
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from '../config/seedConfig';
 
 const log = createLogger('init-data');
 const BCRYPT_ROUNDS = 12;
@@ -35,13 +35,7 @@ async function databaseHasAnyUserData(): Promise<boolean> {
 }
 
 export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
-  const forceSeed = process.env.FORCE_DEMO_SEED === 'true';
-
-  if (forceSeed) {
-    log.info('FORCE_DEMO_SEED=true; skipping database emptiness check');
-  }
-
-  const hasData = forceSeed ? false : await databaseHasAnyUserData();
+  const hasData = await databaseHasAnyUserData();
   if (hasData) {
     log.info('Skipping demo data seed: database already contains data');
     return false;
@@ -1156,22 +1150,4 @@ Keep them on it.
 
   log.info('Demo data seed completed');
   return true;
-}
-
-async function initDefaultData(): Promise<void> {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    log.info('Connected to MongoDB');
-    await ensureDemoDataIfDatabaseEmpty();
-  } finally {
-    await mongoose.connection.close();
-    log.info('Database connection closed');
-  }
-}
-
-if (require.main === module) {
-  initDefaultData().catch((err: Error) => {
-    log.error({ err }, 'Init default data failed');
-    process.exit(1);
-  });
 }

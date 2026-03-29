@@ -24,6 +24,7 @@ import chatRoutes from './routes/chat';
 import adminRoutes from './routes/admin';
 import { Server as SocketIOServer } from 'socket.io';
 import { registerChatHandler } from './socket/chatHandler';
+import { seedOnStartup } from './scripts/seedOnStartup';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -112,8 +113,9 @@ log.debug({ uri: MONGODB_URI.replace(/\/\/[^@]+@/, '//<credentials>@') }, 'Conne
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     log.info('Connected to MongoDB');
+    await seedOnStartup();
   })
   .catch((err: Error) => {
     log.fatal({ err }, 'MongoDB connection error');
