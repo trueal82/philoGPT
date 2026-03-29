@@ -7,6 +7,7 @@ import ChatThread from './ChatThread';
 import NewChatModal from '@/features/bots/NewChatModal';
 import ProfileModal from '@/features/user/ProfileModal';
 import ClientMemoryModal from '@/features/user/ClientMemoryModal';
+import ChangePasswordModal from '@/features/user/ChangePasswordModal';
 import { useUIStore } from '@/shared/stores/uiStore';
 
 export default function ChatPage() {
@@ -31,6 +32,7 @@ export default function ChatPage() {
       {activeModal === 'newChat' && <NewChatModal />}
       {activeModal === 'profile' && <ProfileModal />}
       {activeModal === 'memory' && <ClientMemoryModal />}
+      {activeModal === 'changePassword' && <ChangePasswordModal />}
       <Toast />
     </div>
   );

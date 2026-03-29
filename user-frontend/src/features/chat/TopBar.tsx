@@ -78,6 +78,14 @@ export default function TopBar() {
             >
               {t('nav.profile')}
             </button>
+            {user?.provider === 'local' && (
+              <button
+                role="menuitem"
+                onClick={() => { openModal('changePassword'); setMenuOpen(false); }}
+              >
+                {t('modal.changePassword')}
+              </button>
+            )}
             <button
               role="menuitem"
               onClick={() => { openModal('memory'); setMenuOpen(false); }}

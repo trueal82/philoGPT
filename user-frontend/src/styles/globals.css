@@ -633,6 +633,76 @@ a:hover { text-decoration: underline; }
   padding: 1.25rem;
 }
 
+/* --- Generic form elements (used by ChangePasswordModal etc.) --- */
+
+.change-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.form-input {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  border-color: var(--color-accent);
+}
+
+.form-error {
+  font-size: 0.85rem;
+  color: #e55;
+  margin: 0;
+}
+
+.form-success {
+  font-size: 0.85rem;
+  color: #4c4;
+  margin: 0;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.btn-primary {
+  padding: 0.55rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary:not(:disabled):hover {
+  opacity: 0.85;
+}
+
 /* --- Bot Selection Grid --- */
 
 .bot-grid {

@@ -51,6 +51,14 @@
     "noMemories": "No memories stored yet.",
     "profile": "Profile",
     "provider": "Provider",
-    "role": "Role"
+    "role": "Role",
+    "changePassword": "Change Password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "passwordChanged": "Password updated successfully",
+    "changePasswordTitle": "Change Password",
+    "saving": "Saving…",
+    "save": "Save"
   }
 }

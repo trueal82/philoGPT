@@ -41,6 +41,13 @@ export function updateLanguage(languageCode: string) {
   });
 }
 
+export function changePassword(currentPassword: string, newPassword: string, confirmPassword: string) {
+  return apiFetch<{ message: string }>('/api/auth/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+  });
+}
+
 // --- Bots ---
 
 export function listBots() {

@@ -268,4 +268,57 @@ router.patch('/language', authenticateToken, async (req: Request, res: Response)
   }
 });
 
+// Change password (local accounts only)
+router.patch('/password', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body as {
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    };
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({ message: 'All password fields are required' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ message: 'New passwords do not match' });
+      return;
+    }
+
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      res.status(400).json({ message: 'Password must be between 8 and 128 characters' });
+      return;
+    }
+
+    // authenticateToken guarantees req.user is the caller — no privilege escalation possible
+    const user = await User.findById((req.user as IUser)._id);
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    if (!user.password) {
+      res.status(400).json({ message: 'Password change is not available for OAuth accounts' });
+      return;
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      res.status(401).json({ message: 'Current password is incorrect' });
+      return;
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    log.info({ userId: user._id }, 'Password changed successfully');
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Password change error');
+    res.status(500).json({ message: 'Failed to change password' });
+  }
+});
+
 export default router;

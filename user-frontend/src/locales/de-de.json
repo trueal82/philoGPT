@@ -51,6 +51,14 @@
     "noMemories": "Noch keine Erinnerungen gespeichert.",
     "profile": "Profil",
     "provider": "Anbieter",
-    "role": "Rolle"
+    "role": "Rolle",
+    "changePassword": "Passwort ändern",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "confirmNewPassword": "Neues Passwort bestätigen",
+    "passwordChanged": "Passwort erfolgreich geändert",
+    "changePasswordTitle": "Passwort ändern",
+    "saving": "Speichern…",
+    "save": "Speichern"
   }
 }
