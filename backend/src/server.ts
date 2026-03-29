@@ -60,6 +60,11 @@ app.use(
 
 log.debug({ allowedOrigins }, 'CORS configured');
 
+// Trust the first hop proxy (Docker / reverse proxy) so that
+// express-rate-limit can read the real client IP from X-Forwarded-For
+// instead of seeing the container-internal address.
+app.set('trust proxy', 1);
+
 // ---------------------------------------------------------------------------
 // Global rate limiter — 100 requests per 15 min per IP
 // ---------------------------------------------------------------------------
