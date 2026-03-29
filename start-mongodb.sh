@@ -118,7 +118,12 @@ seed_initial_data_local() {
       echo "[mongo] installing backend dependencies for seed"
       npm install
     fi
-    MONGODB_URI="mongodb://127.0.0.1:${MONGO_PORT}/${MONGO_DB}" FORCE_DEMO_SEED="$PURGE" npx ts-node ../mongodb/initDefaultData.ts
+    NODE_PATH="$ROOT_DIR/backend/node_modules" \
+    TS_NODE_TRANSPILE_ONLY=true \
+    TS_NODE_PROJECT="$ROOT_DIR/backend/tsconfig.json" \
+    MONGODB_URI="mongodb://127.0.0.1:${MONGO_PORT}/${MONGO_DB}" \
+    FORCE_DEMO_SEED="$PURGE" \
+    npx ts-node ../mongodb/initDefaultData.ts
   )
 }
 

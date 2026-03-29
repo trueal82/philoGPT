@@ -62,7 +62,12 @@ fi
 echo "[mongo] checking and seeding '$MONGO_DB' if empty"
 (
   cd /workspace/backend
-  MONGODB_URI="mongodb://127.0.0.1:${MONGO_PORT}/${MONGO_DB}" FORCE_DEMO_SEED="${PURGE}" npx ts-node /workspace/mongodb/initDefaultData.ts
+  NODE_PATH="/workspace/backend/node_modules" \
+  TS_NODE_TRANSPILE_ONLY=true \
+  TS_NODE_PROJECT="/workspace/backend/tsconfig.json" \
+  MONGODB_URI="mongodb://127.0.0.1:${MONGO_PORT}/${MONGO_DB}" \
+  FORCE_DEMO_SEED="${PURGE}" \
+  npx ts-node /workspace/mongodb/initDefaultData.ts
 )
 
 echo "[mongo] startup seed check complete"
