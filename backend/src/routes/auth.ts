@@ -11,7 +11,6 @@
 import { Router, Request, Response } from 'express';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
 import User, { IUser } from '../models/User';
 import UserGroup from '../models/UserGroup';
 import Subscription from '../models/Subscription';
@@ -25,26 +24,6 @@ const log = createLogger('auth');
 const JWT_SECRET = process.env.JWT_SECRET ?? '';
 const JWT_EXPIRY = '24h';
 
-// Stricter rate limit for auth endpoints (brute-force protection)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many attempts, please try again later' },
-  handler: (req: Request, res: Response) => {
-    log.debug(
-      {
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-      },
-      'Auth rate limit exceeded',
-    );
-    res.status(429).json({ message: 'Too many attempts, please try again later' });
-  },
-});
-
 function signToken(userId: unknown): string {
   return jwt.sign({ userId: String(userId) }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
@@ -54,7 +33,7 @@ function isValidEmail(email: string): boolean {
 }
 
 // Register
-router.post('/register', authLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body as { email: string; password: string };
 
@@ -104,7 +83,7 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
 });
 
 // Login
-router.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body as { email: string; password: string };
     const normalizedEmail = email?.toLowerCase().trim();
