@@ -511,6 +511,18 @@ a:hover { text-decoration: underline; }
   max-width: 360px;
 }
 
+.toast-info {
+  border-color: var(--color-border);
+}
+
+.toast-success {
+  border-color: var(--color-accent);
+}
+
+.toast-error {
+  border-color: var(--color-error);
+}
+
 .toast-text {
   flex: 1;
   font-size: 0.85rem;

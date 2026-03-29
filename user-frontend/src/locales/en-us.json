@@ -40,7 +40,12 @@
     "myMemory": "My Memory"
   },
   "toast": {
-    "memoryCreated": "New memory created:"
+    "memoryCreated": "New memory created:",
+    "chatQueuedReconnect": "Connection unavailable. Your message will be retried automatically.",
+    "connectionLostRetrying": "Connection lost. Reconnecting and retrying your message…",
+    "connectionRetrying": "Still reconnecting to chat…",
+    "chatResent": "Connection restored. Message resent.",
+    "chatFailed": "Chat request failed."
   },
   "modal": {
     "choosePhilosopher": "Choose a Philosopher",

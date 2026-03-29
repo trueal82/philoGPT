@@ -1,30 +1,21 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSocket } from '@/shared/api/socket';
-
-interface ToastItem {
-  id: number;
-  key: string;
-  value: string;
-}
-
-let nextId = 0;
+import { dismissToast, showToast, useToastStore } from '@/shared/stores/toastStore';
 
 export default function Toast() {
   const { t } = useTranslation();
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toasts = useToastStore((s) => s.toasts);
 
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((item) => item.id !== id));
+    dismissToast(id);
   }, []);
 
   useEffect(() => {
     const socket = getSocket();
 
     const onMemory = (payload: { key: string; value: string }) => {
-      const id = ++nextId;
-      setToasts((prev) => [...prev, { id, key: payload.key, value: payload.value }]);
-      setTimeout(() => dismiss(id), 5000);
+      showToast({ kind: 'memory', key: payload.key, value: payload.value }, 5000);
     };
 
     socket.on('memory:created', onMemory);
@@ -36,9 +27,11 @@ export default function Toast() {
   return (
     <div className="toast-container">
       {toasts.map((item) => (
-        <div key={item.id} className="toast-item">
+        <div key={item.id} className={`toast-item toast-${item.kind}`}>
           <span className="toast-text">
-            {t('toast.memoryCreated')} <strong>{item.key}</strong>
+            {item.kind === 'memory'
+              ? <>{t('toast.memoryCreated')} <strong>{item.key}</strong></>
+              : item.message}
           </span>
           <button className="toast-close" onClick={() => dismiss(item.id)} aria-label="Close">×</button>
         </div>

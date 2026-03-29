@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { Message as MessageType } from '@/shared/types';
 import * as api from '@/shared/api/endpoints';
-import { getSocket } from '@/shared/api/socket';
+import { connectSocket, getSocket } from '@/shared/api/socket';
+import { showToast } from '@/shared/stores/toastStore';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import ReactMarkdown from 'react-markdown';
@@ -18,6 +19,8 @@ export default function ChatThread({ sessionId }: Props) {
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pendingMessageRef = useRef<{ sessionId: string; content: string } | null>(null);
+  const isRetryingRef = useRef(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -44,6 +47,16 @@ export default function ChatThread({ sessionId }: Props) {
   useEffect(() => {
     const socket = getSocket();
 
+    const retryPendingMessage = () => {
+      const pending = pendingMessageRef.current;
+      if (!pending || pending.sessionId !== sessionId || isRetryingRef.current) return;
+      if (!socket.connected) return;
+
+      isRetryingRef.current = true;
+      socket.emit('chat:send', { sessionId: pending.sessionId, content: pending.content });
+      showToast({ kind: 'success', message: t('toast.chatResent') }, 3000);
+    };
+
     const onToken = (payload: { sessionId: string; token: string }) => {
       if (payload.sessionId !== sessionId) return;
       setIsWaiting(false);
@@ -53,6 +66,8 @@ export default function ChatThread({ sessionId }: Props) {
 
     const onDone = (payload: { sessionId: string }) => {
       if (payload.sessionId !== sessionId) return;
+      pendingMessageRef.current = null;
+      isRetryingRef.current = false;
       setStreamingContent('');
       setIsStreaming(false);
       setIsWaiting(false);
@@ -62,27 +77,51 @@ export default function ChatThread({ sessionId }: Props) {
 
     const onError = (payload: { sessionId: string; error: string }) => {
       if (payload.sessionId !== sessionId) return;
+      isRetryingRef.current = false;
       setStreamingContent('');
       setIsStreaming(false);
       setIsWaiting(false);
       console.error('Chat error:', payload.error);
+      showToast({ kind: 'error', message: payload.error || t('toast.chatFailed') }, 5000);
+    };
+
+    const onConnect = () => {
+      retryPendingMessage();
+    };
+
+    const onDisconnect = () => {
+      if (pendingMessageRef.current?.sessionId === sessionId) {
+        showToast({ kind: 'info', message: t('toast.connectionLostRetrying') }, 5000);
+      }
+    };
+
+    const onConnectError = () => {
+      if (pendingMessageRef.current?.sessionId === sessionId) {
+        showToast({ kind: 'info', message: t('toast.connectionRetrying') }, 5000);
+      }
     };
 
     socket.on('chat:token', onToken);
     socket.on('chat:done', onDone);
     socket.on('chat:error', onError);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
 
     return () => {
       socket.off('chat:token', onToken);
       socket.off('chat:done', onDone);
       socket.off('chat:error', onError);
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
     };
-  }, [sessionId, queryClient]);
+  }, [sessionId, queryClient, t]);
 
   const handleSend = useCallback(
     (content: string) => {
       const socket = getSocket();
-      socket.emit('chat:send', { sessionId, content });
+      pendingMessageRef.current = { sessionId, content };
       setIsWaiting(true);
 
       // Optimistic user message
@@ -99,8 +138,15 @@ export default function ChatThread({ sessionId }: Props) {
           messages: [...(old?.messages ?? []), optimistic],
         }),
       );
+
+      if (socket.connected) {
+        socket.emit('chat:send', { sessionId, content });
+      } else {
+        connectSocket();
+        showToast({ kind: 'info', message: t('toast.chatQueuedReconnect') }, 5000);
+      }
     },
-    [sessionId, queryClient],
+    [sessionId, queryClient, t],
   );
 
   if (isLoading) {

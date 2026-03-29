@@ -40,7 +40,12 @@
     "myMemory": "Mein Gedächtnis"
   },
   "toast": {
-    "memoryCreated": "Neue Erinnerung erstellt:"
+    "memoryCreated": "Neue Erinnerung erstellt:",
+    "chatQueuedReconnect": "Verbindung nicht verfügbar. Deine Nachricht wird automatisch erneut gesendet.",
+    "connectionLostRetrying": "Verbindung verloren. Es wird erneut verbunden und deine Nachricht erneut gesendet…",
+    "connectionRetrying": "Chat-Verbindung wird weiter erneut aufgebaut…",
+    "chatResent": "Verbindung wiederhergestellt. Nachricht erneut gesendet.",
+    "chatFailed": "Chat-Anfrage fehlgeschlagen."
   },
   "modal": {
     "choosePhilosopher": "Wähle einen Philosophen",
