@@ -60,6 +60,9 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
               email: profile.emails?.[0]?.value ?? `${profile.id}@google.com`,
               provider: 'google',
               providerId: profile.id,
+              isLocked: true,
+              lockedAt: new Date(),
+              lockedReason: 'manual unlock required after registration',
             });
           }
           return done(null, user as IUser);
@@ -95,6 +98,9 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
               email: emails?.[0]?.value ?? `${profile.id}@github.com`,
               provider: 'github',
               providerId: profile.id,
+              isLocked: true,
+              lockedAt: new Date(),
+              lockedReason: 'manual unlock required after registration',
             });
           }
           return done(null, user as IUser);

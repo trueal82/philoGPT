@@ -99,6 +99,14 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
       return;
     }
     const user = req.user as IUser;
+    // Non-admin users may only access bots available to their subscription
+    if (user.role !== 'admin') {
+      const subIds = bot.availableToSubscriptionIds.map((id) => id.toString());
+      if (subIds.length > 0 && (!user.subscriptionId || !subIds.includes(user.subscriptionId.toString()))) {
+        res.status(404).json({ message: 'Bot not found' });
+        return;
+      }
+    }
     const [enriched] = await enrichBotsWithLocale([bot], user.languageCode || 'en-us');
     res.json({ bot: enriched });
   } catch (error) {

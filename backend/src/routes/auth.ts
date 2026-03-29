@@ -191,6 +191,10 @@ router.get(
   passport.authenticate('google', { failureRedirect: '/login', session: false }),
   (req: Request, res: Response): void => {
     const user = req.user as IUser;
+    if (user.isLocked) {
+      res.status(423).json({ error: 'account_locked' });
+      return;
+    }
     res.json({
       message: 'Google login successful',
       token: signToken(user._id),
@@ -207,6 +211,10 @@ router.get(
   passport.authenticate('github', { failureRedirect: '/login', session: false }),
   (req: Request, res: Response): void => {
     const user = req.user as IUser;
+    if (user.isLocked) {
+      res.status(423).json({ error: 'account_locked' });
+      return;
+    }
     res.json({
       message: 'GitHub login successful',
       token: signToken(user._id),

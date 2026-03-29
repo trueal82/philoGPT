@@ -1,143 +1,178 @@
-# PhiloGPT Backend
+# PhiloGPT
 
-A backend application for an LLM chat application with support for multiple bots, user authentication, and persistent chat sessions.
+PhiloGPT is a full-stack multi-bot chat platform with:
 
-## Features
+- User-facing chat frontend (React + Vite)
+- Admin frontend for content/config management
+- Backend API (Express + Socket.IO + MongoDB)
+- Startup seeding for demo/default data
 
-- User authentication via local email/password and OAuth providers (Google, GitHub)
-- User profiles with customizable settings
-- Multiple bot identities with distinct personalities
-- Persistent chat sessions with message history
-- Real-time communication support (WebSocket)
-- Admin panel for user management and system configuration
-- LLM configuration management
-- Playground for testing bot functionality
-
-## Technologies Used
-
-- **Backend**: Node.js with Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT with Passport.js
-- **Real-time**: Socket.IO
-- **Security**: Helmet.js, CORS, bcrypt.js
-
-## Project Structure
+## Repository Layout
 
 ```
-src/
-├── server.js              # Main server file
-├── models/                # Database models
-│   ├── User.js
-│   ├── Profile.js
-│   ├── Bot.js
-│   ├── ChatSession.js
-│   ├── Message.js
-│   ├── LLMConfig.js
-│   ├── SystemPrompt.js
-│   └── PlaygroundSession.js
-├── routes/                # API routes
-│   ├── auth.js
-│   ├── bots.js
-│   ├── chat.js
-│   ├── admin.js
-│   └── playground.js
-├── middleware/            # Custom middleware
-│   └── auth.js
-├── config/                # Configuration files
-│   └── passport.js
-└── tests/                 # Test files
+.
+├── backend/             # TypeScript API + Socket.IO + seed logic
+├── user-frontend/       # React/Vite chat UI + runtime config server
+├── admin-frontend/      # Admin UI + runtime config server
+├── docker-compose.yml   # Service topology (parameterized via root .env)
+├── .env.example         # Deployment variable template
+├── start-backend.sh
+├── start-user-frontend.sh
+├── start-frontend.sh    # Starts admin frontend
+├── start-mongodb.sh
+└── SYNOLOGY.md          # Synology deployment guide
 ```
 
-## Installation
+## Architecture Overview
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Set up environment variables in `.env` file
-4. Start MongoDB via the project Mongo service: `./start-mongodb.sh`
-5. Run the application: `npm run dev`
+- Backend listens internally on container port `5001`.
+- User frontend listens on container port `3002`.
+- Admin frontend listens on container port `3001`.
+- MongoDB listens on container port `27017`.
 
-## MongoDB Ownership And Seeding
+Both frontends expose runtime config endpoints (`/config.js` for user frontend, `/config` for admin frontend). Those values are injected into the browser, so API URLs must be public/browser-reachable domains.
 
-- Seeding is owned by the top-level `mongodb/` module only.
-- The seed file lives at `mongodb/initDefaultData.ts`.
-- The Mongo container starts `mongod`, checks whether the configured DB is empty, and seeds only if empty.
-- The backend no longer performs any startup seeding.
+## Quick Start (Docker Compose)
 
-Useful commands:
-
-- `./start-mongodb.sh` - start MongoDB container with empty-check seed behavior.
-- `./start-mongodb.sh --purge` - drop app collections and reseed on startup.
-
-## Environment Variables
-
-Create a `.env` file in the root directory with the following variables:
-
-```
-PORT=5000
-NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/philogpt
-JWT_SECRET=your-super-secret-jwt-key-here
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-OPENAI_API_KEY=your-openai-api-key
-OLLAMA_API_URL=http://localhost:11434
-```
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register a new user
-- `POST /api/auth/login` - Login user
-- `POST /api/auth/logout` - Logout user
-- `GET /api/auth/google` - Google OAuth login
-- `GET /api/auth/github` - GitHub OAuth login
-
-### Bots
-- `GET /api/bots` - Get all bots
-- `GET /api/bots/:id` - Get specific bot
-- `POST /api/bots` - Create new bot (admin only)
-- `PUT /api/bots/:id` - Update bot (admin only)
-- `DELETE /api/bots/:id` - Delete bot (admin only)
-
-### Chat
-- `GET /api/chat/sessions` - Get user's chat sessions
-- `POST /api/chat/sessions` - Create new chat session
-- `GET /api/chat/sessions/:id/messages` - Get messages for a session
-- `POST /api/chat/sessions/:id/messages` - Send message to bot
-- `DELETE /api/chat/sessions/:id` - Delete chat session
-
-### Admin
-- `GET /api/admin/users` - Get all users (admin only)
-- `GET /api/admin/users/:id` - Get specific user (admin only)
-- `PUT /api/admin/users/:id/role` - Update user role (admin only)
-- `DELETE /api/admin/users/:id` - Delete user (admin only)
-- `GET /api/admin/llm-configs` - Get all LLM configurations (admin only)
-- `POST /api/admin/llm-configs` - Create LLM configuration (admin only)
-- `PUT /api/admin/llm-configs/:id` - Update LLM configuration (admin only)
-- `DELETE /api/admin/llm-configs/:id` - Delete LLM configuration (admin only)
-- `GET /api/admin/system-prompt` - Get system prompt (admin only)
-- `PUT /api/admin/system-prompt` - Update system prompt (admin only)
-
-### Playground
-- `GET /api/playground/bots` - Get available bots for playground
-- `POST /api/playground/sessions` - Start a new playground session
-- `POST /api/playground/messages` - Send message to bot in playground
-
-## Running Tests
+### 1) Create the root environment file
 
 ```bash
-npm test
+cp .env.example .env
 ```
 
-## Development
+Edit `.env` and set at least:
+
+- `FRONTEND_URL`
+- `ADMIN_URL`
+- `API_URL`
+- `JWT_SECRET`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+
+### 2) Build and run
 
 ```bash
-npm run dev  # Start development server with nodemon
-npm start    # Start production server
+docker compose build
+docker compose up -d
 ```
 
-## License
+### 3) Verify
 
-MIT
+```bash
+docker compose ps
+docker compose logs backend --tail=40
+```
+
+## Environment Model
+
+The project uses a single root `.env` file for Compose substitution. `docker-compose.yml` references values with `${VAR}` so the compose file itself stays static.
+
+Important variables:
+
+- `FRONTEND_URL`: public chat URL (used in backend CORS)
+- `ADMIN_URL`: public admin URL (used in backend CORS)
+- `API_URL`: public backend API URL (injected into both frontends)
+- `BACKEND_PORT`, `FRONTEND_PORT`, `ADMIN_PORT`, `MONGO_PORT`: host port mappings
+- `SEED_ON_EMPTY_DB`: seed when DB is empty
+- `PURGE_AND_RESEED`: one-shot destructive reseed flag
+
+## Seeding Behavior
+
+Seeding is owned by the backend startup flow:
+
+- If `SEED_ON_EMPTY_DB=true`, backend seeds when database is empty.
+- If `PURGE_AND_RESEED=true`, backend drops app collections and reseeds.
+
+After a purge run, set `PURGE_AND_RESEED=false` again.
+
+## Local Development (Without Docker)
+
+Run services in separate terminals from repo root:
+
+```bash
+./start-mongodb.sh
+./start-backend.sh
+./start-user-frontend.sh
+./start-frontend.sh
+```
+
+Notes:
+
+- `start-backend.sh` runs from `backend/`, so backend env vars must be available there (for example via `backend/.env` or exported shell variables).
+- At minimum, backend requires `JWT_SECRET`; typically you also set `MONGODB_URI` and `ALLOWED_ORIGINS`.
+- `start-frontend.sh` starts admin frontend on `3001`.
+- `start-user-frontend.sh` starts user frontend dev server.
+- `start-backend.sh` starts backend in watch mode on `5001`.
+
+To stop common local listeners:
+
+```bash
+./kill_all.sh
+```
+
+## Backend Scripts
+
+From `backend/`:
+
+```bash
+npm run dev        # ts-node runtime
+npm run dev:watch  # nodemon + ts-node
+npm run build      # compile TypeScript
+npm start          # run dist/server.js
+npm test           # jest (all tests)
+npm run test:security  # security-focused integration tests
+```
+
+## Security Tests
+
+The project includes automated security integration tests covering:
+
+- **Authentication boundaries** — registration, login, locked accounts, JWT validation
+- **Admin/user separation** — all admin endpoints reject unauthenticated and non-admin users
+- **Playground protection** — admin-only enforcement on playground routes
+- **Data ownership** — users cannot access other users' sessions, messages, or memories
+- **Bot entitlement** — subscription-based bot access control
+- **OWASP checks** — IDOR, role escalation, input validation, invalid ObjectIds, security headers
+
+Run from the repo root (no external MongoDB needed — uses in-memory server):
+
+```bash
+./run-security-tests.sh          # security tests only
+./run-security-tests.sh --all    # all tests
+```
+
+Or from `backend/`:
+
+```bash
+npm run test:security
+```
+
+## Frontend Scripts
+
+From `user-frontend/`:
+
+```bash
+npm run dev
+npm run build
+npm run preview
+npm run typecheck
+```
+
+From `admin-frontend/`:
+
+```bash
+npm start
+```
+
+## API Surface (High-Level)
+
+- `/api/auth`: auth and token workflows
+- `/api/bots`: bot catalog and bot configuration
+- `/api/chat`: chat sessions and messages
+- `/api/admin`: admin-only management endpoints
+- `/api/playground`: admin-only prompt testing playground
+- `/health`: health check endpoint
+
+## Deployment
+
+For Synology NAS and reverse proxy setup, see `SYNOLOGY.md`.

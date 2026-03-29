@@ -93,6 +93,19 @@ router.post('/sessions', authenticateToken, async (req: Request, res: Response):
       res.status(401).json({ message: 'User not found' });
       return;
     }
+    // Verify bot exists and user is entitled to it
+    const bot = await Bot.findById(botId);
+    if (!bot) {
+      res.status(404).json({ message: 'Bot not found' });
+      return;
+    }
+    if (user.role !== 'admin') {
+      const subIds = bot.availableToSubscriptionIds.map((id) => id.toString());
+      if (subIds.length > 0 && (!user.subscriptionId || !subIds.includes(user.subscriptionId.toString()))) {
+        res.status(403).json({ message: 'You do not have access to this bot' });
+        return;
+      }
+    }
     const session = new ChatSession({
       userId: user._id,
       botId,

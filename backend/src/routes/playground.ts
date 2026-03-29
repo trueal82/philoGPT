@@ -3,7 +3,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Bot from '../models/Bot';
 import BotLocale from '../models/BotLocale';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
 const router = Router();
@@ -13,7 +13,7 @@ function isValidObjectId(id: string): boolean {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
-router.get('/bots', authenticateToken, async (_req: Request, res: Response): Promise<void> => {
+router.get('/bots', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
     const bots = await Bot.find({}, 'avatar');
     // Enrich with en-us locale names for admin playground
@@ -33,7 +33,7 @@ router.get('/bots', authenticateToken, async (_req: Request, res: Response): Pro
   }
 });
 
-router.post('/sessions', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+router.post('/sessions', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const { botId } = req.body as { botId: string };
     if (!botId || !isValidObjectId(botId)) {
@@ -56,7 +56,7 @@ router.post('/sessions', authenticateToken, async (req: Request, res: Response):
   }
 });
 
-router.post('/messages', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+router.post('/messages', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const { botId, message } = req.body as { botId: string; message: string };
     if (!botId || !isValidObjectId(botId) || !message || typeof message !== 'string') {

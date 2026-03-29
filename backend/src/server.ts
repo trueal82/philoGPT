@@ -22,6 +22,7 @@ import authRoutes from './routes/auth';
 import botRoutes from './routes/bots';
 import chatRoutes from './routes/chat';
 import adminRoutes from './routes/admin';
+import playgroundRoutes from './routes/playground';
 import { Server as SocketIOServer } from 'socket.io';
 import { registerChatHandler } from './socket/chatHandler';
 import { seedOnStartup } from './scripts/seedOnStartup';
@@ -109,18 +110,21 @@ registerChatHandler(io);
 // Database
 // ---------------------------------------------------------------------------
 const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/philogpt';
-log.debug({ uri: MONGODB_URI.replace(/\/\/[^@]+@/, '//<credentials>@') }, 'Connecting to MongoDB');
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(async () => {
-    log.info('Connected to MongoDB');
-    await seedOnStartup();
-  })
-  .catch((err: Error) => {
-    log.fatal({ err }, 'MongoDB connection error');
-    process.exit(1);
-  });
+if (process.env.NODE_ENV !== 'test') {
+  log.debug({ uri: MONGODB_URI.replace(/\/\/[^@]+@/, '//<credentials>@') }, 'Connecting to MongoDB');
+
+  mongoose
+    .connect(MONGODB_URI)
+    .then(async () => {
+      log.info('Connected to MongoDB');
+      await seedOnStartup();
+    })
+    .catch((err: Error) => {
+      log.fatal({ err }, 'MongoDB connection error');
+      process.exit(1);
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -133,6 +137,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/bots', botRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/playground', playgroundRoutes);
 
 // ---------------------------------------------------------------------------
 // Global error handler — never leak stack traces to the client
