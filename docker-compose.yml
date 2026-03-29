@@ -25,9 +25,14 @@ services:
     restart: unless-stopped
 
   mongo:
-    image: mongo:latest
+    build:
+      context: .
+      dockerfile: mongodb/Dockerfile
     ports:
       - "27017:27017"
+    environment:
+      - MONGO_DB=philogpt
+      - PURGE=false
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped
