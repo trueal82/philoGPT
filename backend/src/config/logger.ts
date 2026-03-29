@@ -1,5 +1,6 @@
 import pino from 'pino';
 
+const isDevelopment = process.env.NODE_ENV === 'development';
 const isProduction = process.env.NODE_ENV === 'production';
 const isTest = process.env.NODE_ENV === 'test';
 
@@ -26,9 +27,8 @@ const logger = pino({
 
   // In dev, pipe through pino-pretty for human-readable output.
   // In production, emit newline-delimited JSON (fast, machine-parseable).
-  ...(isProduction
-    ? {}
-    : {
+  ...(isDevelopment
+    ? {
         transport: {
           target: 'pino-pretty',
           options: {
@@ -37,7 +37,8 @@ const logger = pino({
             ignore: 'pid,hostname',
           },
         },
-      }),
+      }
+    : {}),
 });
 
 export default logger;
