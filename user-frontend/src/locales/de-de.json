@@ -59,6 +59,10 @@
     "passwordChanged": "Passwort erfolgreich geändert",
     "changePasswordTitle": "Passwort ändern",
     "saving": "Speichern…",
-    "save": "Speichern"
-  }
+    "save": "Speichern"  },
+  "pwa": {
+    "installTitle": "PhiloGPT installieren",
+    "installMessage": "F\u00fcge PhiloGPT zu deinem Startbildschirm hinzu f\u00fcr ein besseres Erlebnis.",
+    "installButton": "Installieren",
+    "dismiss": "Sp\u00e4ter"  }
 }

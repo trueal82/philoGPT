@@ -60,5 +60,11 @@
     "changePasswordTitle": "Change Password",
     "saving": "Saving…",
     "save": "Save"
+  },
+  "pwa": {
+    "installTitle": "Install PhiloGPT",
+    "installMessage": "Add PhiloGPT to your home screen for the best experience.",
+    "installButton": "Install",
+    "dismiss": "Not now"
   }
 }

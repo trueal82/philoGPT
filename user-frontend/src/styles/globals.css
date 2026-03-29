@@ -1000,3 +1000,65 @@ a:hover { text-decoration: underline; }
     font-size: 16px;
   }
 }
+
+/* =========================================
+   PWA Install Banner
+   ========================================= */
+
+.install-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  padding-bottom: max(0.85rem, env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.3);
+  animation: install-slide-up 0.3s ease;
+}
+
+.install-banner-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-banner-content strong {
+  font-size: 0.95rem;
+}
+
+.install-banner-content p {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15rem;
+}
+
+.install-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.install-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.5rem;
+}
+
+.install-dismiss:hover {
+  color: var(--color-text);
+}
+
+@keyframes install-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
