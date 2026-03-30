@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User';
 import Bot from '../models/Bot';
 import LLMConfig from '../models/LLMConfig';
+import SmtpConfig from '../models/SmtpConfig';
 import Language from '../models/Language';
 import UserGroup from '../models/UserGroup';
 import Subscription from '../models/Subscription';
@@ -108,6 +109,21 @@ export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
   });
   await defaultLLM.save();
   log.info('Created demo LLM configuration (Local Ollama)');
+
+  // --- SMTP Config ---
+  const defaultSmtp = new SmtpConfig({
+    name: 'Default SMTP',
+    smtpHost: 'localhost',
+    smtpPort: 587,
+    tlsMode: 'starttls',
+    smtpUser: '',
+    smtpPassword: '',
+    fromEmail: 'noreply@example.com',
+    fromName: 'PhiloGPT',
+    isActive: false,
+  });
+  await defaultSmtp.save();
+  log.info('Created default SMTP configuration (inactive)');
 
   // --- Bot ---
   const defaultBot = new Bot({

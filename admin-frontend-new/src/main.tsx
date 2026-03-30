@@ -7,13 +7,14 @@ interface AppConfig {
 }
 
 async function bootstrap() {
-  let apiUrl = '';
+  const envApiUrl = import.meta.env.VITE_API_URL as string | undefined;
+  let apiUrl = envApiUrl || 'http://localhost:5001';
   try {
     const res = await fetch('/config');
     const cfg: AppConfig = await res.json();
-    apiUrl = cfg.apiUrl || '';
+    apiUrl = cfg.apiUrl || apiUrl;
   } catch {
-    console.warn('Failed to load runtime config, using empty apiUrl');
+    console.warn(`Failed to load runtime config, using fallback apiUrl: ${apiUrl}`);
   }
 
   ReactDOM.createRoot(document.getElementById('root')!).render(

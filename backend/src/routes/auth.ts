@@ -17,6 +17,7 @@ import Subscription from '../models/Subscription';
 import Language from '../models/Language';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../config/logger';
+import { sendNewUserNotification } from '../services/mailService';
 
 const router = Router();
 const log = createLogger('auth');
@@ -70,6 +71,9 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       lockedReason: 'manual unlock required after registration',
     });
     await user.save();
+
+    // Notify admins of new registration (fire-and-forget)
+    sendNewUserNotification(user.email).catch((err) => log.warn({ err }, 'Failed to send signup notification'));
 
     log.info({ userId: user._id, email: user.email }, 'User registered (locked, pending manual unlock)');
     res.status(201).json({

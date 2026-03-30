@@ -34,6 +34,7 @@ import {
   getClientMemoryKeys,
 } from '../services/toolService';
 import { createLogger } from '../config/logger';
+import ToolCallLog from '../models/ToolCallLog';
 import type pino from 'pino';
 
 const log = createLogger('chat-handler');
@@ -222,6 +223,7 @@ async function handleChatSend(
       lockedLang,
       userIdStr,
       botIdStr,
+      resolved.name,
     );
 
     // --- Persist assistant response ---
@@ -322,8 +324,12 @@ async function runLLMWithToolLoop(
   lockedLang: string,
   userId: string,
   botId: string,
+  botName: string,
 ): Promise<string> {
   const wikiLang = lockedLang.split('-')[0];
+  const resolvedBotName = typeof botName === 'string' && botName.trim().length > 0
+    ? botName.trim()
+    : 'Unknown Bot';
   const emitToken = async (token: string) => {
     socket.emit('chat:token', { sessionId, token });
   };
@@ -340,12 +346,42 @@ async function runLLMWithToolLoop(
       const toolParams = call.function.arguments;
       socketLog.debug({ toolName, toolParams }, 'Executing tool call');
 
-      const toolResult = await executeTool(
-        toolName,
-        toolParams,
-        { language: wikiLang },
-        { userId, botId },
-      );
+      const toolStartMs = Date.now();
+      let toolResult: string;
+      let toolStatus: 'success' | 'error' = 'success';
+      let toolError: string | undefined;
+      try {
+        toolResult = await executeTool(
+          toolName,
+          toolParams,
+          { language: wikiLang },
+          { userId, botId },
+        );
+      } catch (execErr: any) {
+        toolStatus = 'error';
+        toolError = execErr?.message ?? String(execErr);
+        toolResult = `Error executing tool: ${toolError}`;
+      }
+      const toolElapsedMs = Date.now() - toolStartMs;
+
+      // Persist each tool call before continuing so logs are not dropped.
+      try {
+        await ToolCallLog.create({
+          sessionId,
+          userId,
+          botId,
+          botName: resolvedBotName,
+          toolName,
+          toolDisplayName: toolName,
+          inputParams: toolParams,
+          outputResult: typeof toolResult === 'string' ? toolResult.slice(0, 50000) : String(toolResult),
+          executionTimeMs: toolElapsedMs,
+          status: toolStatus,
+          errorMessage: toolError,
+        });
+      } catch (err: unknown) {
+        socketLog.warn({ err, toolName }, 'Failed to persist tool-call log');
+      }
 
       // Persist tool-call assistant message
       await new Message({

@@ -17,6 +17,8 @@ import { SubscriptionList, SubscriptionCreate, SubscriptionEdit } from './resour
 import { ToolList, ToolCreate, ToolEdit } from './resources/tools';
 import { SessionList, SessionShow } from './resources/sessions';
 import { ClientMemoryList, ClientMemoryCreate, ClientMemoryEdit } from './resources/clientMemories';
+import { SmtpConfigList, SmtpConfigCreate, SmtpConfigEdit } from './resources/smtpConfigs';
+import { ToolCallLogList, ToolCallLogShow } from './resources/toolCallLogs';
 
 function AdminMenu() {
   return (
@@ -56,6 +58,8 @@ export default function App({ apiUrl }: AppProps) {
       <Resource name="tools" list={ToolList} create={ToolCreate} edit={ToolEdit} />
       <Resource name="sessions" list={SessionList} show={SessionShow} />
       <Resource name="client-memories" list={ClientMemoryList} create={ClientMemoryCreate} edit={ClientMemoryEdit} />
+      <Resource name="smtp-configs" list={SmtpConfigList} create={SmtpConfigCreate} edit={SmtpConfigEdit} />
+      <Resource name="tool-call-logs" list={ToolCallLogList} show={ToolCallLogShow} />
 
       <CustomRoutes>
         <Route path="/system-prompt" element={<SystemPromptPage />} />

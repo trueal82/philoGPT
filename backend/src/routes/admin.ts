@@ -20,6 +20,9 @@ import ChatSession from '../models/ChatSession';
 import Message from '../models/Message';
 import Tool from '../models/Tool';
 import ClientMemory from '../models/ClientMemory';
+import SmtpConfig from '../models/SmtpConfig';
+import ToolCallLog from '../models/ToolCallLog';
+import { sendTestMailWithConfig } from '../services/mailService';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 
@@ -1201,6 +1204,211 @@ router.delete('/client-memories/:id', authenticateToken, requireAdmin, async (re
   } catch (error) {
     log.error({ err: error }, 'Error deleting client memory');
     res.status(500).json({ message: 'Error deleting client memory' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SMTP Configs
+// ---------------------------------------------------------------------------
+const VALID_TLS_MODES = ['none', 'starttls', 'ssl'] as const;
+
+router.get('/smtp-configs', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    let configs = await SmtpConfig.find().sort({ isActive: -1, createdAt: -1 });
+    if (configs.length > 0 && !configs.some((c: any) => c.isActive)) {
+      configs[0].set('isActive', true);
+      await configs[0].save();
+      configs = await SmtpConfig.find().sort({ isActive: -1, createdAt: -1 });
+    }
+    res.json({ configs });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching SMTP configs');
+    res.status(500).json({ message: 'Error fetching SMTP configs' });
+  }
+});
+
+router.get('/smtp-configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid config ID' }); return; }
+    const config = await SmtpConfig.findById(req.params.id);
+    if (!config) { res.status(404).json({ message: 'SMTP configuration not found' }); return; }
+    res.json({ config });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching SMTP config');
+    res.status(500).json({ message: 'Error fetching SMTP config' });
+  }
+});
+
+router.post('/smtp-configs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, smtpHost, smtpPort, tlsMode, smtpUser, smtpPassword, fromEmail, fromName, isActive } = req.body;
+    if (!name || !smtpHost || !smtpPort || !fromEmail) {
+      res.status(400).json({ message: 'Name, host, port, and fromEmail are required' }); return;
+    }
+    if (tlsMode && !VALID_TLS_MODES.includes(tlsMode)) {
+      res.status(400).json({ message: 'Invalid TLS mode' }); return;
+    }
+    const hasExistingActive = await SmtpConfig.exists({ isActive: true });
+    const shouldBeActive = isActive === true || !hasExistingActive;
+    if (shouldBeActive) {
+      await SmtpConfig.updateMany({ isActive: true }, { isActive: false });
+    }
+    const config = new SmtpConfig({ name, smtpHost, smtpPort, tlsMode: tlsMode || 'starttls', smtpUser, smtpPassword, fromEmail, fromName, isActive: shouldBeActive });
+    await config.save();
+    log.info({ configId: config._id, name }, 'SMTP config created');
+    res.status(201).json({ config, message: 'SMTP configuration created successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error creating SMTP configuration');
+    res.status(500).json({ message: 'Error creating SMTP configuration' });
+  }
+});
+
+router.put('/smtp-configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid config ID' }); return; }
+    const { name, smtpHost, smtpPort, tlsMode, smtpUser, smtpPassword, fromEmail, fromName, isActive } = req.body;
+    if (tlsMode && !VALID_TLS_MODES.includes(tlsMode)) {
+      res.status(400).json({ message: 'Invalid TLS mode' }); return;
+    }
+    const update: Record<string, unknown> = { name, smtpHost, smtpPort, tlsMode, smtpUser, fromEmail, fromName };
+    if (smtpPassword) update.smtpPassword = smtpPassword;
+    if (isActive !== undefined) update.isActive = !!isActive;
+    if (isActive === true) {
+      await SmtpConfig.updateMany({ _id: { $ne: req.params.id }, isActive: true }, { isActive: false });
+    }
+    const config = await SmtpConfig.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    if (!config) { res.status(404).json({ message: 'SMTP configuration not found' }); return; }
+    log.info({ configId: req.params.id }, 'SMTP config updated');
+    res.json({ config, message: 'SMTP configuration updated successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error updating SMTP configuration');
+    res.status(500).json({ message: 'Error updating SMTP configuration' });
+  }
+});
+
+router.delete('/smtp-configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid config ID' }); return; }
+    const config = await SmtpConfig.findByIdAndDelete(req.params.id);
+    if (!config) { res.status(404).json({ message: 'SMTP configuration not found' }); return; }
+    if ((config as any).isActive) {
+      const replacement = await SmtpConfig.findOne().sort({ createdAt: -1 });
+      if (replacement) { replacement.set('isActive', true); await replacement.save(); }
+    }
+    log.info({ configId: req.params.id }, 'SMTP config deleted');
+    res.json({ message: 'SMTP configuration deleted successfully' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting SMTP configuration');
+    res.status(500).json({ message: 'Error deleting SMTP configuration' });
+  }
+});
+
+router.post('/smtp-configs/test', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const currentUserEmail = (req.user as any)?.email as string | undefined;
+    if (!currentUserEmail) {
+      res.status(400).json({ message: 'Current user email not available' });
+      return;
+    }
+
+    const {
+      configId,
+      smtpHost,
+      smtpPort,
+      tlsMode,
+      smtpUser,
+      smtpPassword,
+      fromEmail,
+      fromName,
+    } = (req.body ?? {}) as {
+      configId?: string;
+      smtpHost?: string;
+      smtpPort?: number | string;
+      tlsMode?: string;
+      smtpUser?: string;
+      smtpPassword?: string;
+      fromEmail?: string;
+      fromName?: string;
+    };
+
+    let existing: any = null;
+    if (configId && isValidObjectId(configId)) {
+      existing = await SmtpConfig.findById(configId).lean();
+    }
+
+    const resolvedTlsMode = (tlsMode ?? existing?.tlsMode ?? 'starttls') as string;
+    if (!VALID_TLS_MODES.includes(resolvedTlsMode as typeof VALID_TLS_MODES[number])) {
+      res.status(400).json({ message: 'Invalid TLS mode' });
+      return;
+    }
+
+    const resolvedHost = (smtpHost ?? existing?.smtpHost ?? '').toString().trim();
+    const resolvedFromEmail = (fromEmail ?? existing?.fromEmail ?? '').toString().trim();
+    const resolvedPortRaw = smtpPort ?? existing?.smtpPort;
+    const resolvedPort = Number(resolvedPortRaw);
+
+    if (!resolvedHost || !resolvedFromEmail || !Number.isFinite(resolvedPort) || resolvedPort < 1 || resolvedPort > 65535) {
+      res.status(400).json({ message: 'Valid SMTP host, port, and fromEmail are required for test' });
+      return;
+    }
+
+    await sendTestMailWithConfig(currentUserEmail, {
+      smtpHost: resolvedHost,
+      smtpPort: resolvedPort,
+      tlsMode: resolvedTlsMode as 'none' | 'starttls' | 'ssl',
+      smtpUser: (smtpUser ?? existing?.smtpUser ?? '').toString(),
+      smtpPassword: (smtpPassword ?? existing?.smtpPassword ?? '').toString(),
+      fromEmail: resolvedFromEmail,
+      fromName: (fromName ?? existing?.fromName ?? 'PhiloGPT').toString(),
+    });
+
+    log.info({ userEmail: currentUserEmail, configId: configId ?? null }, 'SMTP test email sent');
+    res.json({ message: `Test email sent to ${currentUserEmail}` });
+  } catch (error: any) {
+    log.error({ err: error }, 'Error sending SMTP test email');
+    res.status(500).json({ message: error?.message || 'Error sending SMTP test email' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tool Call Logs (read-only)
+// ---------------------------------------------------------------------------
+router.get('/tool-call-logs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage as string) || 25));
+    const sort = (req.query.sort as string) || 'createdAt';
+    const order = req.query.order === 'ASC' ? 1 : -1;
+
+    const filter: Record<string, unknown> = {};
+    if (req.query.sessionId && isValidObjectId(req.query.sessionId as string)) filter.sessionId = req.query.sessionId;
+    if (req.query.userId && isValidObjectId(req.query.userId as string)) filter.userId = req.query.userId;
+    if (req.query.toolName) filter.toolName = req.query.toolName;
+
+    const total = await ToolCallLog.countDocuments(filter);
+    const logs = await ToolCallLog.find(filter)
+      .sort({ [sort]: order })
+      .skip((page - 1) * perPage)
+      .limit(perPage)
+      .lean();
+
+    res.set('X-Total-Count', String(total));
+    res.json({ logs, total });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching tool call logs');
+    res.status(500).json({ message: 'Error fetching tool call logs' });
+  }
+});
+
+router.get('/tool-call-logs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid log ID' }); return; }
+    const logEntry = await ToolCallLog.findById(req.params.id).lean();
+    if (!logEntry) { res.status(404).json({ message: 'Tool call log not found' }); return; }
+    res.json({ log: logEntry });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching tool call log');
+    res.status(500).json({ message: 'Error fetching tool call log' });
   }
 });
 

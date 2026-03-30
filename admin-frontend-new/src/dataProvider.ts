@@ -105,6 +105,21 @@ const buildMeta = (apiUrl: string): Record<string, ResourceMeta> => ({
     listKey: 'sessions',
     singleKey: 'session',
   },
+  'smtp-configs': {
+    listUrl: `${apiUrl}/api/admin/smtp-configs`,
+    oneUrl: `${apiUrl}/api/admin/smtp-configs/:id`,
+    createUrl: `${apiUrl}/api/admin/smtp-configs`,
+    updateUrl: `${apiUrl}/api/admin/smtp-configs/:id`,
+    deleteUrl: `${apiUrl}/api/admin/smtp-configs/:id`,
+    listKey: 'configs',
+    singleKey: 'config',
+  },
+  'tool-call-logs': {
+    listUrl: `${apiUrl}/api/admin/tool-call-logs`,
+    oneUrl: `${apiUrl}/api/admin/tool-call-logs/:id`,
+    listKey: 'logs',
+    singleKey: 'log',
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -167,6 +182,7 @@ export interface PhiloDataProvider extends DataProvider {
   saveSystemPromptLocale: (languageCode: string, content: string) => Promise<{ data: unknown }>;
   deleteSystemPromptLocale: (languageCode: string) => Promise<{ data: unknown }>;
   getSessionMessages: (sessionId: string) => Promise<{ data: unknown[] }>;
+  testSmtpConfig: (payload: Record<string, unknown>) => Promise<{ data: unknown }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +221,8 @@ export const createDataProvider = (apiUrl: string): PhiloDataProvider => {
 
       // All other resources: fetch all, client-side sort/filter/paginate
       const { json } = await httpClient(m.listUrl);
-      let data = mapIds(json[m.listKey] || []);
+      const rawList = json?.[m.listKey];
+      let data = mapIds(Array.isArray(rawList) ? rawList : []);
       data = filterData(data, params.filter);
       data = sortData(data, field, order);
       const total = data.length;
@@ -379,6 +396,14 @@ export const createDataProvider = (apiUrl: string): PhiloDataProvider => {
     async getSessionMessages(sessionId: string) {
       const { json } = await httpClient(`${apiUrl}/api/admin/sessions/${sessionId}/messages`);
       return { data: mapIds(json.messages || []) };
+    },
+
+    async testSmtpConfig(payload: Record<string, unknown>) {
+      const { json } = await httpClient(`${apiUrl}/api/admin/smtp-configs/test`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return { data: json };
     },
   };
 
