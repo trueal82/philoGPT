@@ -1,5 +1,6 @@
 import { Admin, Resource, CustomRoutes, Layout, Menu } from 'react-admin';
 import { Route } from 'react-router-dom';
+import CommentIcon from '@mui/icons-material/Comment';
 
 import { createAuthProvider } from './authProvider';
 import { createDataProvider } from './dataProvider';
@@ -22,7 +23,7 @@ function AdminMenu() {
     <Menu>
       <Menu.DashboardItem />
       <Menu.ResourceItems />
-      <Menu.Item to="/system-prompt" primaryText="System Prompt" />
+      <Menu.Item to="/system-prompt" primaryText="System Prompt" leftIcon={<CommentIcon />} />
     </Menu>
   );
 }

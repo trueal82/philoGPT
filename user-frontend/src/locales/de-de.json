@@ -37,7 +37,8 @@
   },
   "nav": {
     "profile": "Profil",
-    "myMemory": "Mein Gedächtnis"
+    "myMemory": "Mein Gedächtnis",
+    "language": "Sprache"
   },
   "toast": {
     "memoryCreated": "Neue Erinnerung erstellt:",

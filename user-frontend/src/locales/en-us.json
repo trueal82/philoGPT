@@ -37,7 +37,8 @@
   },
   "nav": {
     "profile": "Profile",
-    "myMemory": "My Memory"
+    "myMemory": "My Memory",
+    "language": "Language"
   },
   "toast": {
     "memoryCreated": "New memory created:",

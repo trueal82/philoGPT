@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '@/shared/api/endpoints';
+import { setUILanguage, SUPPORTED_UI_LANGUAGES } from '@/i18n';
 
 export default function TopBar() {
   const user = useAuthStore((s) => s.user);
@@ -42,6 +43,14 @@ export default function TopBar() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const handleLanguageChange = (code: string) => {
+    const normalizedCode = code.toLowerCase().trim();
+    if (SUPPORTED_UI_LANGUAGES.some((language) => language.code.toLowerCase() === normalizedCode)) {
+      setUILanguage(normalizedCode);
+    }
+    langMut.mutate(normalizedCode);
+  };
 
   return (
     <header className="top-bar">
@@ -96,12 +105,12 @@ export default function TopBar() {
               <>
                 <hr />
                 <div className="language-row">
-                  <label htmlFor="lang-select">🌐</label>
+                  <label htmlFor="lang-select">🌐 {t('nav.language')}</label>
                   <select
                     id="lang-select"
                     className="language-select"
                     value={user?.languageCode ?? 'en-us'}
-                    onChange={(e) => langMut.mutate(e.target.value)}
+                    onChange={(e) => handleLanguageChange(e.target.value)}
                     disabled={langMut.isPending}
                   >
                     {langData.languages.map((l) => (

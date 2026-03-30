@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { normalizeLanguageCode } from '@/i18n';
+import { getStoredUILanguage, normalizeLanguageCode } from '@/i18n';
 import { router } from './router';
 import { useAuthStore } from '@/features/auth/authStore';
 
@@ -23,6 +23,8 @@ export default function App() {
   }, [token, loadProfile]);
 
   useEffect(() => {
+    if (!languageCode) return;
+    if (getStoredUILanguage()) return;
     i18n.changeLanguage(normalizeLanguageCode(languageCode));
   }, [languageCode, i18n]);
 

@@ -71,6 +71,13 @@ a:hover { text-decoration: underline; }
   width: 100%;
   max-width: 400px;
   margin: 1rem;
+  position: relative;
+}
+
+.auth-lang-switcher {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
 }
 
 .auth-card h1 {
