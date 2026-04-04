@@ -44,6 +44,15 @@ export function stripThoughtBlocks(text: string): string {
   return text.replace(THOUGHT_BLOCK_RE, '').trim();
 }
 
+/**
+ * Strip Gemma 4 channel control tags from thinking text.
+ * These tokens sometimes leak through Ollama's `think: true` parsing.
+ */
+const CHANNEL_TAG_RE = /thought<\|channel>|<\|channel>thought|<channel\|>|<\|channel>|<\|start_of_thinking\|>|<\|end_of_thinking\|>/g;
+export function stripChannelTags(text: string): string {
+  return text.replace(CHANNEL_TAG_RE, '').trim();
+}
+
 class OllamaProvider implements ILLMProvider {
   async stream(
     config: ILLMConfig,
@@ -125,12 +134,14 @@ class OllamaProvider implements ILLMProvider {
         // Route thinking tokens (separate field from content)
         const thinkToken = parsed.message?.thinking ?? '';
         if (thinkToken) {
-          thinkingText += thinkToken;
-          if (onThinking) await onThinking(thinkToken);
+          const cleaned = stripChannelTags(thinkToken);
+          thinkingText += cleaned;
+          if (onThinking && cleaned) await onThinking(cleaned);
         }
 
-        // Route content tokens
-        const token = parsed.message?.content ?? '';
+        // Route content tokens (strip any leaked channel tags)
+        const rawToken = parsed.message?.content ?? '';
+        const token = rawToken ? stripChannelTags(rawToken) : '';
         if (token) {
           fullContent += token;
           await onToken(token);
@@ -162,8 +173,9 @@ class OllamaProvider implements ILLMProvider {
         const parsed = JSON.parse(rawBuffer.trim()) as OllamaChunk;
         const thinkToken = parsed.message?.thinking ?? '';
         if (thinkToken) {
-          thinkingText += thinkToken;
-          if (onThinking) await onThinking(thinkToken);
+          const cleaned = stripChannelTags(thinkToken);
+          thinkingText += cleaned;
+          if (onThinking && cleaned) await onThinking(cleaned);
         }
         const token = parsed.message?.content ?? '';
         if (token) {
@@ -215,7 +227,7 @@ class OllamaProvider implements ILLMProvider {
     }
 
     log.debug({ length: fullContent.length }, 'Ollama stream complete');
-    return { type: 'response', content: fullContent, thinking: thinkingText || undefined, stats: doneStats };
+    return { type: 'response', content: fullContent, thinking: stripChannelTags(thinkingText) || undefined, stats: doneStats };
   }
 }
 

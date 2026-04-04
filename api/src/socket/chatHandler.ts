@@ -26,7 +26,7 @@ import Message from '../models/Message';
 import SystemPrompt from '../models/SystemPrompt';
 
 import { streamLLMResponse, ChatMessage } from '../services/llmService';
-import { stripThoughtBlocks } from '../services/providers/ollama';
+import { stripThoughtBlocks, stripChannelTags } from '../services/providers/ollama';
 import { resolveLocale, resolveSystemPromptContent, renderSystemPrompt, PromptVars } from '../services/promptLocalizationService';
 import {
   getEnabledTools,
@@ -546,7 +546,8 @@ async function runLLMWithToolLoop(
     durationMs,
   };
   if (toolCallNames.length > 0) metadata.toolCalls = toolCallNames;
-  if (thinkingText) metadata.thinking = thinkingText;
+  const cleanedThinking = thinkingText ? stripChannelTags(thinkingText) : '';
+  if (cleanedThinking) metadata.thinking = cleanedThinking;
   if (lastStats) {
     if (lastStats.evalCount && lastStats.evalDuration) {
       metadata.tokensPerSecond = Math.round((lastStats.evalCount / lastStats.evalDuration) * 1e9 * 100) / 100;

@@ -5,7 +5,7 @@ import { SEED_ON_EMPTY_DB, PURGE_AND_RESEED } from '../config/seedConfig';
 import { ensureDemoDataIfDatabaseEmpty } from './initDefaultData';
 import { APP_COLLECTIONS } from './appCollections';
 import SeedVersion from '../models/SeedVersion';
-import { BASELINE_VERSION, CURRENT_VERSION, SEED_PATCHES } from './seedPatches';
+import { CURRENT_VERSION, SEED_PATCHES } from './seedPatches';
 
 const log = createLogger('seed');
 
@@ -56,36 +56,28 @@ export async function seedOnStartup(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function applySeedVersioning(): Promise<void> {
-  const existingCount = await SeedVersion.countDocuments();
-  const baselineVersion = BASELINE_VERSION || SEED_PATCHES[0]?.version || CURRENT_VERSION;
-
-  // First run (fresh DB or existing DB upgrading to versioned system):
-  // stamp the baseline so future patches have a reference point.
-  if (existingCount === 0) {
-    const baseline = SEED_PATCHES.find((p) => p.version === baselineVersion);
-    await SeedVersion.create({
-      version: baselineVersion,
-      description: baseline?.description ?? `Baseline v${baselineVersion}`,
-      appliedAt: new Date(),
-    });
-    log.info({ version: baselineVersion }, 'Seed baseline stamped');
-  }
-
-  // Collect already-applied versions
   const applied = new Set(
     (await SeedVersion.find({}, 'version').lean()).map((v) => v.version),
   );
 
-  // Apply any pending patches (those with an apply function not yet in DB)
+  // Fresh database: the initial seed already incorporates all current defaults.
+  // Stamp all known versions immediately and skip migration functions.
+  if (applied.size === 0) {
+    const now = new Date();
+    for (const patch of SEED_PATCHES) {
+      await SeedVersion.create({ version: patch.version, description: patch.description, appliedAt: now });
+      applied.add(patch.version);
+    }
+    log.info({ current: CURRENT_VERSION }, 'Fresh database: all versions stamped');
+    return;
+  }
+
+  // Existing database: apply any pending patches in order.
   for (const patch of SEED_PATCHES) {
     if (applied.has(patch.version) || !patch.apply) continue;
     log.info({ version: patch.version, description: patch.description }, 'Applying seed patch');
     await patch.apply();
-    await SeedVersion.create({
-      version: patch.version,
-      description: patch.description,
-      appliedAt: new Date(),
-    });
+    await SeedVersion.create({ version: patch.version, description: patch.description, appliedAt: new Date() });
     applied.add(patch.version);
     log.info({ version: patch.version }, 'Seed patch applied');
   }
