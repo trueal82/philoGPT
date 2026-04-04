@@ -42,26 +42,56 @@ const TOOL_PARAM_MAP: Record<string, OllamaToolDefinition['function']['parameter
   client_memory: {
     type: 'object',
     properties: {
-      action: { type: 'string', description: '"read" to retrieve all stored memory for this user (call this at the start of every conversation and before any meaningful response), or "write" to persist a key-value fact about the user' },
-      key: { type: 'string', description: 'A structured key such as "name", "core_challenge", "counseling_path", "counseling_step_current", "last_session_summary", or "next_intended_topic" (required for write)' },
-      value: { type: 'string', description: 'The value to store -- keep concise but meaningful (required for write)' },
+      action: { type: 'string', description: '"read" to retrieve durable cross-session memory for this user, or "write" to persist a durable user fact, preference, or enduring context that should still matter in future sessions' },
+      key: { type: 'string', description: 'A durable key such as "name", "age", "occupation", "language_preference", "important_relation_1", or "recurring_struggle_1" (required for write). Do not use counseling-process keys like "counseling_path", "next_intended_topic", or "last_session_summary".' },
+      value: { type: 'string', description: 'The value to store in concise user-grounded wording (required for write)' },
     },
     required: ['action'],
   },
   counseling_plan: {
     type: 'object',
     properties: {
-      action: { type: 'string', description: '"read" to retrieve the current counseling plan for this session, "add_step" to append a new step to the plan, "update_step_status" to change the status of an existing step' },
-      step_title: { type: 'string', description: 'Title of the step to add (required for add_step)' },
-      step_description: { type: 'string', description: 'Optional longer description of the step (for add_step)' },
+      action: { type: 'string', description: '"read" to retrieve the current counseling plan for this session, "add_step" to append a new therapeutic step or phase, or "update_step_status" to change the status of an existing step and record current process evidence' },
+      step_title: { type: 'string', description: 'Short user-visible title of the step to add (required for add_step)' },
+      step_description: { type: 'string', description: 'Optional explanation of what this step is for; use this for session/process context rather than client memory (for add_step)' },
       step_id: { type: 'string', description: 'The ID of the step to update (required for update_step_status)' },
       status: { type: 'string', description: 'New status: "pending", "in_progress", or "completed" (required for update_step_status)' },
-      evidence: { type: 'string', description: 'Optional progress note or evidence for the step update' },
+      evidence: { type: 'string', description: 'Optional progress note, breakthrough, resistance, next intended topic, or other session-specific evidence for the step update' },
       plan_title: { type: 'string', description: 'Optional title for the counseling plan (used on first add_step if plan does not yet exist)' },
     },
     required: ['action'],
   },
 };
+
+const BLOCKED_CLIENT_MEMORY_KEYS = new Set([
+  'first_interaction_topic',
+  'core_challenge',
+  'counseling_path',
+  'counseling_step_current',
+  'last_session_summary',
+  'next_intended_topic',
+]);
+
+const BLOCKED_CLIENT_MEMORY_KEY_PATTERNS = [
+  /^counseling_step_(?:n|\d+)_status$/i,
+  /^seed_(?:n|\d+)$/i,
+  /^breakthrough_(?:n|\d+)$/i,
+];
+
+const CLIENT_MEMORY_BOUNDARY_MESSAGE = 'This key belongs in counseling_plan, not client_memory. Use counseling_plan for current steps, next intended topic, session summaries, breakthroughs, and other process notes.';
+
+function isAllowedClientMemoryKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  if (!normalized) return false;
+  if (BLOCKED_CLIENT_MEMORY_KEYS.has(normalized)) return false;
+  return !BLOCKED_CLIENT_MEMORY_KEY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function sanitizeClientMemoryData(data: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => isAllowedClientMemoryKey(key)),
+  );
+}
 
 /** Fetch all tools that are currently enabled in the database. */
 export async function getEnabledTools(): Promise<ITool[]> {
@@ -103,7 +133,7 @@ export async function getClientMemoryKeys(
     return [];
   }
 
-  return Object.keys(data).sort((a, b) => a.localeCompare(b));
+  return Object.keys(sanitizeClientMemoryData(data as Record<string, unknown>)).sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -204,7 +234,13 @@ async function executeClientMemory(
     if (!record || Object.keys(record.data ?? {}).length === 0) {
       return 'No memory stored yet for this client.';
     }
-    return JSON.stringify(record.data, null, 2);
+
+    const sanitizedData = sanitizeClientMemoryData(record.data as Record<string, unknown>);
+    if (Object.keys(sanitizedData).length === 0) {
+      return 'No durable cross-session memory stored yet for this client.';
+    }
+
+    return JSON.stringify(sanitizedData, null, 2);
   }
 
   if (action === 'write') {
@@ -212,6 +248,10 @@ async function executeClientMemory(
     const trimmedValue = value.trim();
     if (!trimmedKey) {
       return 'A "key" is required to write to memory.';
+    }
+    if (!isAllowedClientMemoryKey(trimmedKey)) {
+      log.debug({ userId, botId, key: trimmedKey }, 'Blocked counseling-process key from client memory');
+      return CLIENT_MEMORY_BOUNDARY_MESSAGE;
     }
 
     const existing = await ClientMemory.findOne({ userId, botId });

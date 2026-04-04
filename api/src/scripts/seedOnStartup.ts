@@ -5,7 +5,7 @@ import { SEED_ON_EMPTY_DB, PURGE_AND_RESEED } from '../config/seedConfig';
 import { ensureDemoDataIfDatabaseEmpty } from './initDefaultData';
 import { APP_COLLECTIONS } from './appCollections';
 import SeedVersion from '../models/SeedVersion';
-import { CURRENT_VERSION, SEED_PATCHES } from './seedPatches';
+import { BASELINE_VERSION, CURRENT_VERSION, SEED_PATCHES } from './seedPatches';
 
 const log = createLogger('seed');
 
@@ -41,12 +41,13 @@ export async function seedOnStartup(): Promise<void> {
     await purgeAppCollections();
   }
 
-  if (!SEED_ON_EMPTY_DB) {
-    log.debug('SEED_ON_EMPTY_DB is not enabled — skipping seed check');
-    return;
+  if (SEED_ON_EMPTY_DB) {
+    await ensureDemoDataIfDatabaseEmpty();
+  } else {
+    log.debug('SEED_ON_EMPTY_DB is not enabled — skipping demo data seed');
   }
 
-  await ensureDemoDataIfDatabaseEmpty();
+  // Seed versioning (migrations) always runs, independent of SEED_ON_EMPTY_DB.
   await applySeedVersioning();
 }
 
@@ -56,17 +57,18 @@ export async function seedOnStartup(): Promise<void> {
 
 async function applySeedVersioning(): Promise<void> {
   const existingCount = await SeedVersion.countDocuments();
+  const baselineVersion = BASELINE_VERSION || SEED_PATCHES[0]?.version || CURRENT_VERSION;
 
   // First run (fresh DB or existing DB upgrading to versioned system):
   // stamp the baseline so future patches have a reference point.
   if (existingCount === 0) {
-    const baseline = SEED_PATCHES.find((p) => p.version === CURRENT_VERSION);
+    const baseline = SEED_PATCHES.find((p) => p.version === baselineVersion);
     await SeedVersion.create({
-      version: CURRENT_VERSION,
-      description: baseline?.description ?? `Baseline v${CURRENT_VERSION}`,
+      version: baselineVersion,
+      description: baseline?.description ?? `Baseline v${baselineVersion}`,
       appliedAt: new Date(),
     });
-    log.info({ version: CURRENT_VERSION }, 'Seed baseline stamped');
+    log.info({ version: baselineVersion }, 'Seed baseline stamped');
   }
 
   // Collect already-applied versions
@@ -84,6 +86,7 @@ async function applySeedVersioning(): Promise<void> {
       description: patch.description,
       appliedAt: new Date(),
     });
+    applied.add(patch.version);
     log.info({ version: patch.version }, 'Seed patch applied');
   }
 

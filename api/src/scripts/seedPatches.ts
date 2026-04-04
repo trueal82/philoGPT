@@ -11,7 +11,16 @@
  *  - New patches are automatically applied by `seedOnStartup.ts` on boot.
  */
 
-export const CURRENT_VERSION = '1.0';
+import SystemPrompt from '../models/SystemPrompt';
+import Tool from '../models/Tool';
+import {
+  DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION,
+  DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION,
+  upgradeSystemPromptMemoryPlanBoundaries,
+} from './defaultPromptTemplates';
+
+export const BASELINE_VERSION = '1.0';
+export const CURRENT_VERSION = '1.1';
 
 export interface SeedPatch {
   version: string;
@@ -25,10 +34,48 @@ export const SEED_PATCHES: SeedPatch[] = [
     description: 'Initial seed: philosophers, tools, global system prompt template with {{PLACEHOLDER}} injection',
     // No apply() — baseline marker. Data seeded by initDefaultData.ts.
   },
-  // Future example:
-  // {
-  //   version: '1.1',
-  //   description: 'Add new bot XYZ',
-  //   apply: async () => { ... },
-  // },
+  {
+    version: '1.1',
+    description: 'Clarify durable user memory vs session counseling plan boundaries',
+    apply: async () => {
+      await Tool.updateOne(
+        { name: 'client_memory' },
+        { $set: { description: DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION } },
+      );
+      await Tool.updateOne(
+        { name: 'counseling_plan' },
+        { $set: { description: DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION } },
+      );
+
+      const prompts = await SystemPrompt.find({}).lean();
+      for (const prompt of prompts) {
+        const updatedContent = upgradeSystemPromptMemoryPlanBoundaries(prompt.content);
+        const sourceLocales = prompt.locales instanceof Map
+          ? Object.fromEntries(prompt.locales)
+          : ((prompt.locales ?? {}) as Record<string, string>);
+
+        const updatedLocales: Record<string, string> = {};
+        let localesChanged = false;
+        for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
+          const upgradedLocalizedContent = upgradeSystemPromptMemoryPlanBoundaries(localizedContent);
+          updatedLocales[languageCode] = upgradedLocalizedContent;
+          if (upgradedLocalizedContent !== localizedContent) {
+            localesChanged = true;
+          }
+        }
+
+        const update: Record<string, unknown> = {};
+        if (updatedContent !== prompt.content) {
+          update.content = updatedContent;
+        }
+        if (localesChanged) {
+          update.locales = updatedLocales;
+        }
+
+        if (Object.keys(update).length > 0) {
+          await SystemPrompt.updateOne({ _id: prompt._id }, { $set: update });
+        }
+      }
+    },
+  },
 ];
