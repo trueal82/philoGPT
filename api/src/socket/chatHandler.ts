@@ -32,6 +32,7 @@ import {
   buildOllamaToolDefinitions,
   executeTool,
   getClientMemoryKeys,
+  getCounselingPlanSummary,
 } from '../services/toolService';
 import { createLogger } from '../config/logger';
 import ToolCallLog from '../models/ToolCallLog';
@@ -193,13 +194,14 @@ async function handleChatSend(
       isFirstUserMessageInSession,
       userIdStr,
       botIdStr,
+      sessionId,
       socketLog,
     );
 
     // --- Map history to LLM-compatible messages ---
     const contextMessages: ChatMessage[] = [
       { role: 'system', content: systemMessage },
-      ...history.map(mapStoredMessageToChat),
+      ...history.map(mapStoredMessageToChat).filter((m): m is ChatMessage => m !== null),
     ];
 
     socketLog.debug(
@@ -227,7 +229,13 @@ async function handleChatSend(
     );
 
     // --- Persist assistant response ---
-    const assistantMessage = new Message({ sessionId, role: 'assistant', content: fullResponse });
+    // Guard against saving bare [tool_call] artefacts as real responses
+    const sanitizedResponse = fullResponse.trim() === '[tool_call]' ? '' : fullResponse;
+    if (sanitizedResponse === '') {
+      socketLog.warn('Final response empty or bare [tool_call]; sending fallback');
+    }
+    const finalContent = sanitizedResponse || 'I seem to have lost my train of thought. Could you repeat what you just said?';
+    const assistantMessage = new Message({ sessionId, role: 'assistant', content: finalContent });
     await assistantMessage.save();
     await ChatSession.findByIdAndUpdate(sessionId, { updatedAt: new Date() });
 
@@ -253,6 +261,7 @@ async function buildFullSystemMessage(
   isFirstTurn: boolean,
   userId: string,
   botId: string,
+  sessionId: string,
   socketLog: Logger,
 ): Promise<string> {
   const globalPrompt = await SystemPrompt.findOne({ isActive: true }).lean();
@@ -283,6 +292,15 @@ async function buildFullSystemMessage(
     );
   }
 
+  // Inject current counseling plan state
+  const planSummary = await getCounselingPlanSummary(sessionId, userId, botId);
+  if (planSummary) {
+    systemMsg += '\n\nCURRENT SESSION COUNSELING PLAN:\n' + planSummary;
+    systemMsg += '\nUse counseling_plan tool to read/add/update steps. Keep the plan current every turn.';
+  } else {
+    systemMsg += '\n\nNo counseling plan exists for this session yet. Use counseling_plan add_step to create one when you identify the user\'s needs.';
+  }
+
   return systemMsg;
 }
 
@@ -290,10 +308,21 @@ async function buildFullSystemMessage(
  * Convert a persisted Message document into a ChatMessage for the LLM,
  * replaying tool_calls and tool_name metadata.
  */
-function mapStoredMessageToChat(m: Record<string, any>): ChatMessage {
+function mapStoredMessageToChat(m: Record<string, any>): ChatMessage | null {
+  // Skip bare [tool_call] assistant messages that have no actual tool_calls —
+  // these are from previous turns where the model emitted the tag as plain text
+  // without a structured payload. Replaying them teaches the model to repeat
+  // the broken pattern.
+  const meta = m.metadata as Map<string, unknown> | undefined;
+  if (m.role === 'assistant' && m.content === '[tool_call]') {
+    const tc = meta instanceof Map ? meta.get('tool_calls') : (meta as any)?.tool_calls;
+    if (!Array.isArray(tc) || tc.length === 0) {
+      return null; // bare [tool_call] with no real tool calls — skip it
+    }
+  }
+
   const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content };
 
-  const meta = m.metadata as Map<string, unknown> | undefined;
   if (msg.role === 'assistant' && meta) {
     const tc = meta instanceof Map ? meta.get('tool_calls') : (meta as any)?.tool_calls;
     if (Array.isArray(tc) && tc.length > 0) {
@@ -355,7 +384,7 @@ async function runLLMWithToolLoop(
           toolName,
           toolParams,
           { language: wikiLang },
-          { userId, botId },
+          { userId, botId, sessionId },
         );
       } catch (execErr: any) {
         toolStatus = 'error';
@@ -414,6 +443,14 @@ async function runLLMWithToolLoop(
         }
       }
 
+      // Notify client of counseling plan changes
+      if (
+        toolName === 'counseling_plan' &&
+        (toolParams.action === 'add_step' || toolParams.action === 'update_step_status')
+      ) {
+        socket.emit('plan:updated', { sessionId });
+      }
+
       // Extend context for next LLM round
       contextMessages.push({ role: 'assistant', content: '', tool_calls: [call] });
       contextMessages.push({ role: 'tool', content: toolResult, tool_name: toolName });
@@ -421,6 +458,13 @@ async function runLLMWithToolLoop(
 
     // Capture inline trailing content before re-calling
     const trailingContent = result.type === 'tool_calls' ? result.inlineTrailingContent : undefined;
+
+    // Add a continuation hint so the model knows it should respond to the user
+    // after processing tool results (some models return empty otherwise).
+    contextMessages.push({
+      role: 'system',
+      content: 'Tool calls have been processed. Now respond naturally to the user based on the conversation and tool results above. Do not make another tool call unless absolutely necessary.',
+    });
 
     result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs);
 
@@ -443,7 +487,31 @@ async function runLLMWithToolLoop(
   // Fallback: retry without tools if response is still empty
   if (fullResponse === '' && toolDefs) {
     socketLog.warn('LLM returned empty response after tool loop; retrying without tools');
-    const retry = await streamLLMResponse(llmConfig, contextMessages, emitToken);
+
+    // Flatten tool-related messages into plain text so the model can
+    // understand the context without tool support enabled.
+    const flattenedMessages = contextMessages.map((msg) => {
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        const callDesc = msg.tool_calls
+          .map((tc) => `[Used tool: ${tc.function.name}(${JSON.stringify(tc.function.arguments)})]`)
+          .join('\n');
+        return { role: 'assistant' as const, content: callDesc };
+      }
+      if (msg.role === 'tool') {
+        return {
+          role: 'assistant' as const,
+          content: `[Tool result from ${msg.tool_name ?? 'unknown'}]: ${msg.content}`,
+        };
+      }
+      return msg;
+    });
+    // Add a nudge to respond
+    flattenedMessages.push({
+      role: 'system',
+      content: 'Now respond to the user naturally, incorporating the tool results above.',
+    });
+
+    const retry = await streamLLMResponse(llmConfig, flattenedMessages, emitToken);
     fullResponse = retry.type === 'response' ? retry.content : '';
   }
 

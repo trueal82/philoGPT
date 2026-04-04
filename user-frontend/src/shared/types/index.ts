@@ -77,3 +77,28 @@ export interface BotsResponse {
 export interface MemoryResponse {
   memory: ClientMemory | null;
 }
+
+export interface CounselingStep {
+  stepId: string;
+  title: string;
+  description?: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  evidence?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface CounselingPlan {
+  _id: string;
+  sessionId: string;
+  userId: string;
+  botId: string;
+  title: string;
+  steps: CounselingStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CounselingPlanResponse {
+  counselingPlan: CounselingPlan | null;
+}

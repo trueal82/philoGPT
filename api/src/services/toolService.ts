@@ -12,7 +12,9 @@
 
 import Tool, { ITool } from '../models/Tool';
 import ClientMemory from '../models/ClientMemory';
+import CounselingPlan from '../models/CounselingPlan';
 import { createLogger } from '../config/logger';
+import { randomUUID } from 'crypto';
 
 const log = createLogger('tool-service');
 
@@ -43,6 +45,19 @@ const TOOL_PARAM_MAP: Record<string, OllamaToolDefinition['function']['parameter
       action: { type: 'string', description: '"read" to retrieve all stored memory for this user (call this at the start of every conversation and before any meaningful response), or "write" to persist a key-value fact about the user' },
       key: { type: 'string', description: 'A structured key such as "name", "core_challenge", "counseling_path", "counseling_step_current", "last_session_summary", or "next_intended_topic" (required for write)' },
       value: { type: 'string', description: 'The value to store -- keep concise but meaningful (required for write)' },
+    },
+    required: ['action'],
+  },
+  counseling_plan: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', description: '"read" to retrieve the current counseling plan for this session, "add_step" to append a new step to the plan, "update_step_status" to change the status of an existing step' },
+      step_title: { type: 'string', description: 'Title of the step to add (required for add_step)' },
+      step_description: { type: 'string', description: 'Optional longer description of the step (for add_step)' },
+      step_id: { type: 'string', description: 'The ID of the step to update (required for update_step_status)' },
+      status: { type: 'string', description: 'New status: "pending", "in_progress", or "completed" (required for update_step_status)' },
+      evidence: { type: 'string', description: 'Optional progress note or evidence for the step update' },
+      plan_title: { type: 'string', description: 'Optional title for the counseling plan (used on first add_step if plan does not yet exist)' },
     },
     required: ['action'],
   },
@@ -99,7 +114,7 @@ export async function executeTool(
   toolName: string,
   params: Record<string, unknown>,
   config: Record<string, unknown>,
-  context?: { userId: string; botId: string },
+  context?: { userId: string; botId: string; sessionId?: string },
 ): Promise<string> {
   const tool = await Tool.findOne({ name: toolName, enabled: true });
   if (!tool) {
@@ -116,6 +131,14 @@ export async function executeTool(
         String(params.action ?? 'read'),
         String(params.key ?? ''),
         String(params.value ?? ''),
+        context?.userId ?? '',
+        context?.botId ?? '',
+      );
+    case 'counseling_plan':
+      return executeCounselingPlan(
+        String(params.action ?? 'read'),
+        params,
+        context?.sessionId ?? '',
         context?.userId ?? '',
         context?.botId ?? '',
       );
@@ -219,4 +242,127 @@ async function executeClientMemory(
   }
 
   return `Unknown action "${action}". Use "read" or "write".`;
+}
+
+// ---------------------------------------------------------------------------
+// Counseling Plan tool — session-scoped structured plan
+// ---------------------------------------------------------------------------
+
+const VALID_STEP_STATUSES = ['pending', 'in_progress', 'completed'] as const;
+
+async function executeCounselingPlan(
+  action: string,
+  params: Record<string, unknown>,
+  sessionId: string,
+  userId: string,
+  botId: string,
+): Promise<string> {
+  if (!sessionId || !userId || !botId) {
+    return 'Counseling plan is not available in this context.';
+  }
+
+  if (action === 'read') {
+    const plan = await CounselingPlan.findOne({ sessionId, userId, botId }).lean();
+    if (!plan || plan.steps.length === 0) {
+      return 'No counseling plan exists for this session yet. Use add_step to create one.';
+    }
+    const summary = formatPlanSummary(plan.title, plan.steps);
+    return summary;
+  }
+
+  if (action === 'add_step') {
+    const stepTitle = String(params.step_title ?? '').trim();
+    if (!stepTitle) {
+      return 'A "step_title" is required to add a step.';
+    }
+
+    const stepDescription = String(params.step_description ?? '').trim() || undefined;
+    const planTitle = String(params.plan_title ?? '').trim() || 'Counseling Plan';
+
+    const newStep = {
+      stepId: randomUUID(),
+      title: stepTitle,
+      description: stepDescription,
+      status: 'pending' as const,
+      createdAt: new Date(),
+    };
+
+    const plan = await CounselingPlan.findOneAndUpdate(
+      { sessionId, userId, botId },
+      {
+        $push: { steps: newStep },
+        $setOnInsert: { title: planTitle },
+      },
+      { upsert: true, new: true },
+    );
+
+    log.debug({ sessionId, userId, botId, stepId: newStep.stepId }, 'Counseling plan step added');
+
+    const totalSteps = plan.steps.length;
+    return `Step added: "${stepTitle}" (${newStep.stepId}). Plan now has ${totalSteps} step(s).\n\n${formatPlanSummary(plan.title, plan.steps)}`;
+  }
+
+  if (action === 'update_step_status') {
+    const stepId = String(params.step_id ?? '').trim();
+    const status = String(params.status ?? '').trim();
+    const evidence = String(params.evidence ?? '').trim() || undefined;
+
+    if (!stepId) {
+      return 'A "step_id" is required to update a step.';
+    }
+    if (!VALID_STEP_STATUSES.includes(status as typeof VALID_STEP_STATUSES[number])) {
+      return `Invalid status "${status}". Must be one of: ${VALID_STEP_STATUSES.join(', ')}`;
+    }
+
+    const updateFields: Record<string, unknown> = {
+      'steps.$.status': status,
+    };
+    if (evidence) {
+      updateFields['steps.$.evidence'] = evidence;
+    }
+    if (status === 'completed') {
+      updateFields['steps.$.completedAt'] = new Date();
+    }
+
+    const plan = await CounselingPlan.findOneAndUpdate(
+      { sessionId, userId, botId, 'steps.stepId': stepId },
+      { $set: updateFields },
+      { new: true },
+    );
+
+    if (!plan) {
+      return `Step "${stepId}" not found in this session's counseling plan.`;
+    }
+
+    log.debug({ sessionId, stepId, status }, 'Counseling plan step updated');
+    return `Step "${stepId}" updated to "${status}".\n\n${formatPlanSummary(plan.title, plan.steps)}`;
+  }
+
+  return `Unknown action "${action}". Use "read", "add_step", or "update_step_status".`;
+}
+
+function formatPlanSummary(title: string, steps: Array<{ stepId: string; title: string; status: string; evidence?: string }>): string {
+  const statusIcon: Record<string, string> = { pending: '○', in_progress: '◐', completed: '●' };
+  const lines = steps.map((s, i) => {
+    const icon = statusIcon[s.status] ?? '?';
+    let line = `${i + 1}. ${icon} [${s.status}] ${s.title} (id: ${s.stepId})`;
+    if (s.evidence) line += `\n   Evidence: ${s.evidence}`;
+    return line;
+  });
+  return `COUNSELING PLAN: ${title}\n${lines.join('\n')}`;
+}
+
+/**
+ * Return a compact plan summary for injection into the system prompt.
+ * Returns empty string if no plan exists yet.
+ */
+export async function getCounselingPlanSummary(
+  sessionId: string,
+  userId: string,
+  botId: string,
+): Promise<string> {
+  if (!sessionId || !userId || !botId) return '';
+  const plan = await CounselingPlan.findOne({ sessionId, userId, botId }).lean();
+  if (!plan || plan.steps.length === 0) return '';
+  return formatPlanSummary(plan.title, plan.steps);
 }

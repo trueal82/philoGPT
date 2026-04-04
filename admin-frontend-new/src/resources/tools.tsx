@@ -22,6 +22,7 @@ import type { PhiloDataProvider } from '../dataProvider';
 const toolTypes = [
   { id: 'wikipedia', name: 'Wikipedia' },
   { id: 'client_memory', name: 'Client Memory' },
+  { id: 'counseling_plan', name: 'Counseling Plan' },
 ];
 
 function ToggleToolButton() {

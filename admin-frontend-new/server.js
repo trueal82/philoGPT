@@ -15,7 +15,7 @@ const isDebug = LOG_LEVEL === 'debug';
 
 // Expose runtime config to the browser before any static/catch-all middleware
 app.get('/config', (_req, res) => {
-    res.json({ apiUrl: process.env.BACKEND_URL || 'http://localhost:5001' });
+    res.json({ apiUrl: process.env.API_URL || process.env.BACKEND_URL || 'http://localhost:5001' });
 });
 
 // Security headers

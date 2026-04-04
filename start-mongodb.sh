@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # start-mongodb.sh — Pure MongoDB launcher for local development.
 # Prefers local mongod; falls back to Docker if unavailable.
-# Seeding is handled by the backend (SEED_ON_EMPTY_DB env var).
+# Seeding is handled by the API service (SEED_ON_EMPTY_DB env var).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./launcher-common.sh
+. "$ROOT_DIR/launcher-common.sh"
+
+set_terminal_title "philoGPT: start-mongodb"
+
 MONGO_CONTAINER="${MONGO_CONTAINER:-philogpt-mongo-dev}"
 MONGO_DB="${MONGO_DB:-philogpt}"
 MONGO_VOLUME="${MONGO_VOLUME:-philogpt_mongo_data}"
@@ -12,17 +17,46 @@ MONGO_PORT="${MONGO_PORT:-27017}"
 MONGOD_PID=""
 STARTED_CONTAINER=false
 GRACE_SECONDS="${GRACE_SECONDS:-3}"
+KILLABLE_REGEX='(mongod|mongo|mongosh)'
 PURGE=false
 
-APP_COLLECTIONS=(
-  users bots playgroundsessions messages systemprompts profiles
-  chatsessions clientmemories llmconfigs languages usergroups
-  subscriptions botlocales tools
-)
+APP_COLLECTIONS=()
+
+load_app_collections() {
+  local source_file="$ROOT_DIR/api/src/scripts/appCollections.ts"
+
+  if [[ -f "$source_file" ]]; then
+    mapfile -t APP_COLLECTIONS < <(
+      awk "
+        /export const APP_COLLECTIONS = \[/ { in_block = 1; next }
+        /\] as const;/ { in_block = 0 }
+        in_block {
+          while (match(\$0, /'[^']+'/)) {
+            print substr(\$0, RSTART + 1, RLENGTH - 2)
+            \$0 = substr(\$0, RSTART + RLENGTH)
+          }
+        }
+      " "$source_file"
+    )
+  fi
+
+  if [[ "${#APP_COLLECTIONS[@]}" -gt 0 ]]; then
+    echo "[mongo] loaded ${#APP_COLLECTIONS[@]} app collections from api/src/scripts/appCollections.ts"
+    return 0
+  fi
+
+  # Fallback if the canonical source file format changes or is unavailable.
+  APP_COLLECTIONS=(
+    users bots playgroundsessions messages systemprompts profiles
+    chatsessions clientmemories llmconfigs languages usergroups
+    subscriptions botlocales tools toolcalllogs smtpconfigs counselingplans
+  )
+  echo "[mongo] warning: using fallback app collection list" >&2
+}
 
 usage() {
   echo "Usage: $0 [--purge]"
-  echo "  --purge   Drop app collections (backend will reseed on next start if SEED_ON_EMPTY_DB=true)"
+  echo "  --purge   Drop app collections (API will reseed on next start if SEED_ON_EMPTY_DB=true)"
 }
 
 for arg in "$@"; do
@@ -32,6 +66,12 @@ for arg in "$@"; do
     *) echo "[mongo] unknown argument: $arg" >&2; usage >&2; exit 1 ;;
   esac
 done
+
+load_app_collections
+
+stop_docker_containers_by_port_gracefully "mongo" "$MONGO_PORT"
+gracefully_stop_port_processes "mongo" "$MONGO_PORT" "$KILLABLE_REGEX" "$GRACE_SECONDS"
+ensure_port_is_free "mongo" "$MONGO_PORT"
 
 cleanup() {
   if [[ -n "$MONGOD_PID" ]]; then

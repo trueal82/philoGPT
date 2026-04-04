@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Kill only the backend (port 3001) — leaves frontend and MongoDB untouched.
+# Kill only the API (port 5001) — leaves frontends and MongoDB untouched.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./launcher-common.sh
+. "$ROOT_DIR/launcher-common.sh"
+
+set_terminal_title "philoGPT: kill-api"
 
 PORT=5001
 GRACE_SECONDS="${GRACE_SECONDS:-3}"
 KILLABLE_REGEX='(node|tsx|ts-node|nodemon)'
 
 log() {
-  echo "[kill_backend] $*"
+  echo "[kill_api] $*"
 }
 
 is_running() {
@@ -49,7 +55,7 @@ stop_docker_containers_by_port() {
 }
 
 main() {
-  log "Stopping backend on port $PORT"
+  log "Stopping API on port $PORT"
 
   stop_docker_containers_by_port
 

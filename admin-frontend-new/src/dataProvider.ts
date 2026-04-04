@@ -120,6 +120,13 @@ const buildMeta = (apiUrl: string): Record<string, ResourceMeta> => ({
     listKey: 'logs',
     singleKey: 'log',
   },
+  'counseling-plans': {
+    listUrl: `${apiUrl}/api/admin/counseling-plans`,
+    oneUrl: `${apiUrl}/api/admin/counseling-plans/:id`,
+    deleteUrl: `${apiUrl}/api/admin/counseling-plans/:id`,
+    listKey: 'counselingPlans',
+    singleKey: 'counselingPlan',
+  },
 });
 
 // ---------------------------------------------------------------------------

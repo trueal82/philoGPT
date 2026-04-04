@@ -12,8 +12,10 @@ import {
   useNotify,
   DeleteButton,
   SearchInput,
+  TopToolbar,
+  FilterButton,
 } from 'react-admin';
-import { Box, Typography } from '@mui/material';
+import { Box, Chip, Typography } from '@mui/material';
 import type { PhiloDataProvider } from '../dataProvider';
 
 function SessionMessages() {
@@ -37,11 +39,17 @@ function SessionMessages() {
 
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="h6" sx={{ mb: 1 }}>Messages</Typography>
+      <Typography variant="h6" sx={{ mb: 1 }}>Messages ({messages.length})</Typography>
+      {messages.length === 0 && <Typography variant="body2" color="text.secondary">No messages yet</Typography>}
       {messages.map((m, idx) => (
         <Box key={`${String(m.id)}-${idx}`} sx={{ border: '1px solid #ddd', borderRadius: 1, p: 1, mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">{String(m.role)}</Typography>
-          <Typography variant="body2">{String(m.content || '')}</Typography>
+          <Chip
+            label={String(m.role)}
+            size="small"
+            color={m.role === 'assistant' ? 'primary' : m.role === 'user' ? 'default' : 'info'}
+            sx={{ mb: 0.5 }}
+          />
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{String(m.content || '')}</Typography>
         </Box>
       ))}
     </Box>
@@ -57,12 +65,13 @@ export function SessionList() {
       pagination={false}
       perPage={50}
       sort={{ field: 'createdAt', order: 'DESC' }}
+      actions={<TopToolbar><FilterButton /></TopToolbar>}
     >
       <Datagrid rowClick="show" bulkActionButtons={false}>
         <TextField source="userId.email" label="User" />
         <TextField source="botId.name" label="Bot" />
-        <NumberField source="messageCount" />
-        <DateField source="createdAt" showTime />
+        <NumberField source="messageCount" label="Messages" />
+        <DateField source="createdAt" label="Started" showTime />
         <DeleteButton />
       </Datagrid>
     </List>

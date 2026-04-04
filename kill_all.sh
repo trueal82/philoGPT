@@ -5,7 +5,13 @@ set -euo pipefail
 # 1) graceful stop (TERM / docker stop)
 # 2) force stop (KILL) for anything still bound
 
-PORTS=(3001 5001 27017)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./launcher-common.sh
+. "$ROOT_DIR/launcher-common.sh"
+
+set_terminal_title "philoGPT: kill-all"
+
+PORTS=(3001 3002 5001 27017)
 GRACE_SECONDS="${GRACE_SECONDS:-3}"
 KILLABLE_REGEX='(node|mongod|mongo|mongosh|tsx|ts-node|nodemon)'
 
@@ -13,27 +19,9 @@ log() {
   echo "[kill_all] $*"
 }
 
-is_running() {
-  local pid="$1"
-  kill -0 "$pid" 2>/dev/null
-}
-
-find_pids_for_port() {
-  local port="$1"
-  lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u
-}
-
 pid_matches_allowed_process() {
   local pid="$1"
-  local comm args
-  comm="$(ps -p "$pid" -o comm= 2>/dev/null | tr -d '[:space:]' || true)"
-  args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-
-  if [[ "$comm" =~ $KILLABLE_REGEX ]] || [[ "$args" =~ $KILLABLE_REGEX ]]; then
-    return 0
-  fi
-
-  return 1
+  pid_matches_regex "$pid" "$KILLABLE_REGEX"
 }
 
 stop_docker_containers_by_port() {

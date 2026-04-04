@@ -10,6 +10,7 @@ import {
   ReferenceInput,
   SelectInput,
   FunctionField,
+  DateField,
 } from 'react-admin';
 
 function parseJsonOrThrow(value: string): Record<string, unknown> {
@@ -24,9 +25,10 @@ export function ClientMemoryList() {
         <TextField source="userId.email" label="User" />
         <TextField source="botId.name" label="Bot" />
         <FunctionField
-          label="Data"
+          label="Data preview"
           render={(record: { data: unknown }) => JSON.stringify(record.data || {}).slice(0, 120)}
         />
+        <DateField source="createdAt" showTime />
         <EditButton />
       </Datagrid>
     </List>

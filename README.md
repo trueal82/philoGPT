@@ -4,20 +4,20 @@ PhiloGPT is a full-stack multi-bot chat platform with:
 
 - User-facing chat frontend (React + Vite)
 - Admin frontend for content/config management
-- Backend API (Express + Socket.IO + MongoDB)
+- API service (Express + Socket.IO + MongoDB)
 - Startup seeding for demo/default data
 
 ## Repository Layout
 
 ```
 .
-├── backend/             # TypeScript API + Socket.IO + seed logic
+├── api/             # TypeScript API + Socket.IO + seed logic
 ├── user-frontend/       # React/Vite chat UI + runtime config server
 ├── admin-frontend/      # Legacy admin UI (kept for reference)
 ├── admin-frontend-new/  # Active admin UI (React-admin) + runtime config server
 ├── docker-compose.yml   # Service topology (parameterized via root .env)
 ├── .env.example         # Deployment variable template
-├── start-backend.sh
+├── start-api.sh
 ├── start-user-frontend.sh
 ├── start-admin.sh       # Starts active admin frontend
 ├── start-mongodb.sh
@@ -26,7 +26,7 @@ PhiloGPT is a full-stack multi-bot chat platform with:
 
 ## Architecture Overview
 
-- Backend listens internally on container port `5001`.
+- API listens internally on container port `5001`.
 - User frontend listens on container port `3002`.
 - Admin frontend listens on container port `3001`.
 - MongoDB listens on container port `27017`.
@@ -61,7 +61,7 @@ docker compose up -d
 
 ```bash
 docker compose ps
-docker compose logs backend --tail=40
+docker compose logs api --tail=40
 ```
 
 ## Environment Model
@@ -70,19 +70,19 @@ The project uses a single root `.env` file for Compose substitution. `docker-com
 
 Important variables:
 
-- `FRONTEND_URL`: public chat URL (used in backend CORS)
-- `ADMIN_URL`: public admin URL (used in backend CORS)
-- `API_URL`: public backend API URL (injected into both frontends)
-- `BACKEND_PORT`, `FRONTEND_PORT`, `ADMIN_PORT`, `MONGO_PORT`: host port mappings
+- `FRONTEND_URL`: public chat URL (used in API CORS)
+- `ADMIN_URL`: public admin URL (used in API CORS)
+- `API_URL`: public API URL (injected into both frontends)
+- `API_PORT`, `FRONTEND_PORT`, `ADMIN_PORT`, `MONGO_PORT`: host port mappings
 - `SEED_ON_EMPTY_DB`: seed when DB is empty
 - `PURGE_AND_RESEED`: one-shot destructive reseed flag
 
 ## Seeding Behavior
 
-Seeding is owned by the backend startup flow:
+Seeding is owned by the API startup flow:
 
-- If `SEED_ON_EMPTY_DB=true`, backend seeds when database is empty.
-- If `PURGE_AND_RESEED=true`, backend drops app collections and reseeds.
+- If `SEED_ON_EMPTY_DB=true`, API seeds when database is empty.
+- If `PURGE_AND_RESEED=true`, API drops app collections and reseeds.
 
 After a purge run, set `PURGE_AND_RESEED=false` again.
 
@@ -92,18 +92,18 @@ Run services in separate terminals from repo root:
 
 ```bash
 ./start-mongodb.sh
-./start-backend.sh
+./start-api.sh
 ./start-user-frontend.sh
 ./start-admin.sh
 ```
 
 Notes:
 
-- `start-backend.sh` runs from `backend/`, so backend env vars must be available there (for example via `backend/.env` or exported shell variables).
-- At minimum, backend requires `JWT_SECRET`; typically you also set `MONGODB_URI` and `ALLOWED_ORIGINS`.
+- `start-api.sh` runs from `api/`, so API env vars must be available there (for example via `api/.env` or exported shell variables).
+- At minimum, API requires `JWT_SECRET`; typically you also set `MONGODB_URI` and `ALLOWED_ORIGINS`.
 - `start-admin.sh` starts the active admin frontend on `3001`.
 - `start-user-frontend.sh` starts user frontend dev server.
-- `start-backend.sh` starts backend in watch mode on `5001`.
+- `start-api.sh` starts API in watch mode on `5001`.
 
 To stop common local listeners:
 
@@ -111,9 +111,9 @@ To stop common local listeners:
 ./kill_all.sh
 ```
 
-## Backend Scripts
+## API Scripts
 
-From `backend/`:
+From `api/`:
 
 ```bash
 npm run dev        # ts-node runtime
@@ -141,7 +141,7 @@ Run from the repo root (no external MongoDB needed — uses in-memory server):
 ./run-security-tests.sh --all    # all tests
 ```
 
-Or from `backend/`:
+Or from `api/`:
 
 ```bash
 npm run test:security

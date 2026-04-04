@@ -98,6 +98,24 @@ export function deleteMemoryKey(botId: string, key: string) {
   );
 }
 
+// --- Counseling Plan ---
+
+export function getCounselingPlan(sessionId: string) {
+  return apiFetch<import('@/shared/types').CounselingPlanResponse>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/counseling-plan`,
+  );
+}
+
+export function updateCounselingPlanStep(sessionId: string, stepId: string, status: string) {
+  return apiFetch<{ counselingPlan: import('@/shared/types').CounselingPlan }>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/counseling-plan/steps/${encodeURIComponent(stepId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+  );
+}
+
 export function deleteAllMemories() {
   return apiFetch<{ message: string }>('/api/chat/memories', { method: 'DELETE' });
 }

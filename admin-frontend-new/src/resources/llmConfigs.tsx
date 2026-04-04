@@ -11,7 +11,9 @@ import {
   SelectInput,
   NumberInput,
   BooleanInput,
+  FunctionField,
 } from 'react-admin';
+import { Chip } from '@mui/material';
 
 const providerChoices = [
   { id: 'openai', name: 'OpenAI' },
@@ -25,10 +27,15 @@ export function LlmConfigList() {
     <List sort={{ field: 'createdAt', order: 'DESC' }}>
       <Datagrid rowClick="edit">
         <TextField source="name" />
-        <TextField source="provider" />
+        <FunctionField
+          label="Provider"
+          render={(record: any) => (
+            <Chip label={record?.provider} size="small" variant="outlined" />
+          )}
+        />
         <TextField source="model" />
-        <BooleanField source="isActive" />
-        <BooleanField source="supportsTools" />
+        <BooleanField source="isActive" label="Active" />
+        <BooleanField source="supportsTools" label="Tools" />
         <EditButton />
       </Datagrid>
     </List>

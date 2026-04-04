@@ -22,6 +22,7 @@ import Tool from '../models/Tool';
 import ClientMemory from '../models/ClientMemory';
 import SmtpConfig from '../models/SmtpConfig';
 import ToolCallLog from '../models/ToolCallLog';
+import CounselingPlan from '../models/CounselingPlan';
 import { sendTestMailWithConfig } from '../services/mailService';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
@@ -941,7 +942,7 @@ router.delete('/sessions/:id', authenticateToken, requireAdmin, async (req: Requ
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
-const VALID_TOOL_TYPES = ['wikipedia', 'client_memory'] as const;
+const VALID_TOOL_TYPES = ['wikipedia', 'client_memory', 'counseling_plan'] as const;
 
 router.get('/tools', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -1409,6 +1410,51 @@ router.get('/tool-call-logs/:id', authenticateToken, requireAdmin, async (req: R
   } catch (error) {
     log.error({ err: error }, 'Error fetching tool call log');
     res.status(500).json({ message: 'Error fetching tool call log' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Counseling Plans (admin read-only)
+// ---------------------------------------------------------------------------
+router.get('/counseling-plans', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const filter: Record<string, unknown> = {};
+    if (typeof req.query.sessionId === 'string' && isValidObjectId(req.query.sessionId)) {
+      filter.sessionId = req.query.sessionId;
+    }
+    if (typeof req.query.userId === 'string' && isValidObjectId(req.query.userId)) {
+      filter.userId = req.query.userId;
+    }
+    const plans = await CounselingPlan.find(filter).sort({ updatedAt: -1 }).limit(200).lean();
+    res.json({ counselingPlans: plans, total: plans.length });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching counseling plans');
+    res.status(500).json({ message: 'Error fetching counseling plans' });
+  }
+});
+
+router.get('/counseling-plans/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid plan ID' }); return; }
+    const plan = await CounselingPlan.findById(req.params.id).lean();
+    if (!plan) { res.status(404).json({ message: 'Counseling plan not found' }); return; }
+    res.json({ counselingPlan: plan });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching counseling plan');
+    res.status(500).json({ message: 'Error fetching counseling plan' });
+  }
+});
+
+router.delete('/counseling-plans/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) { res.status(400).json({ message: 'Invalid plan ID' }); return; }
+    const plan = await CounselingPlan.findByIdAndDelete(req.params.id);
+    if (!plan) { res.status(404).json({ message: 'Counseling plan not found' }); return; }
+    log.info({ id: req.params.id }, 'Deleted counseling plan');
+    res.json({ message: 'Counseling plan deleted' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting counseling plan');
+    res.status(500).json({ message: 'Error deleting counseling plan' });
   }
 });
 

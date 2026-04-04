@@ -1,11 +1,11 @@
 # PhiloGPT - Complete Implementation Summary
 
 ## Overview
-I have successfully implemented a complete philosophical chatbot platform with both backend and admin frontend components. The system includes user authentication, bot management, LLM configuration, and a comprehensive admin interface.
+I have successfully implemented a complete philosophical chatbot platform with both API and admin frontend components. The system includes user authentication, bot management, LLM configuration, and a comprehensive admin interface.
 
 ## Key Features Implemented
 
-### Backend Components
+### API Components
 1. **User Management System**
    - JWT-based authentication
    - OAuth support (Google and GitHub)
@@ -73,7 +73,7 @@ I have successfully implemented a complete philosophical chatbot platform with b
 1. **Prerequisites**: Node.js, MongoDB
 2. **Installation**: `npm install`
 3. **Initialize**: `npm run init` (creates default admin user)
-4. **Start Backend**: `npm run dev` (starts server on port 5000)
+4. **Start API**: `npm run dev` (starts server on port 5000)
 5. **Start Admin Frontend**: `npm run admin` (starts admin server on port 3001)
 
 ## Access

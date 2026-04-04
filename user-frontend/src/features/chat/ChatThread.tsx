@@ -9,6 +9,7 @@ import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useUIStore } from '@/shared/stores/uiStore';
 
 interface Props {
   sessionId: string;
@@ -17,6 +18,7 @@ interface Props {
 export default function ChatThread({ sessionId }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const openModal = useUIStore((s) => s.openModal);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pendingMessageRef = useRef<{ sessionId: string; content: string } | null>(null);
@@ -180,7 +182,7 @@ export default function ChatThread({ sessionId }: Props) {
         )}
         <div ref={bottomRef} />
       </div>
-      <ChatInput onSend={handleSend} disabled={isStreaming || isWaiting} />
+      <ChatInput onSend={handleSend} disabled={isStreaming || isWaiting} onOpenPlan={() => openModal('counselingPlan')} />
     </div>
   );
 }

@@ -12,7 +12,7 @@ const isDebug = LOG_LEVEL === 'debug';
 
 // Serve runtime config before static middleware so it is never cached as a static file
 app.get('/config.js', (_req, res) => {
-    const apiUrl = process.env.BACKEND_URL || 'http://localhost:5001';
+    const apiUrl = process.env.API_URL || process.env.BACKEND_URL || 'http://localhost:5001';
     const socketUrl = process.env.SOCKET_URL || 'http://localhost:5001';
     res.setHeader('Content-Type', 'application/javascript');
     res.setHeader('Cache-Control', 'no-store');

@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next';
 interface Props {
   onSend: (content: string) => void;
   disabled?: boolean;
+  onOpenPlan?: () => void;
 }
 
-export default function ChatInput({ onSend, disabled }: Props) {
+export default function ChatInput({ onSend, disabled, onOpenPlan }: Props) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -51,6 +52,17 @@ export default function ChatInput({ onSend, disabled }: Props) {
 
   return (
     <form className="chat-input-form" onSubmit={handleSubmit}>
+      {onOpenPlan && (
+        <button
+          type="button"
+          className="plan-btn"
+          onClick={onOpenPlan}
+          title={t('counselingPlan.openTooltip')}
+          aria-label={t('counselingPlan.openTooltip')}
+        >
+          ☰
+        </button>
+      )}
       <textarea
         ref={textareaRef}
         className="chat-textarea"

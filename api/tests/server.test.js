@@ -5,7 +5,7 @@ describe('Server', () => {
   it('should respond with a message on root route', async () => {
     const response = await request(app).get('/');
     expect(response.status).toBe(200);
-    expect(response.body.message).toBe('PhiloGPT Backend API');
+    expect(response.body.message).toBe('PhiloGPT API');
   });
 
   it('should have authentication routes', async () => {

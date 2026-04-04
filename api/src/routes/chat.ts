@@ -13,6 +13,7 @@ import ChatSession from '../models/ChatSession';
 import Message from '../models/Message';
 import User, { IUser } from '../models/User';
 import ClientMemory from '../models/ClientMemory';
+import CounselingPlan from '../models/CounselingPlan';
 import Bot from '../models/Bot';
 import BotLocale from '../models/BotLocale';
 import { authenticateToken } from '../middleware/auth';
@@ -339,6 +340,85 @@ router.delete('/memories', authenticateToken, async (req: Request, res: Response
   } catch (error) {
     log.error({ err: error }, 'Error deleting all memories');
     res.status(500).json({ message: 'Error deleting memories' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Counseling Plan — read plan for a session
+// ---------------------------------------------------------------------------
+router.get('/sessions/:id/counseling-plan', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    // Verify session ownership
+    const session = await ChatSession.findOne({
+      _id: req.params.id,
+      userId: (req.user as IUser)._id,
+    });
+    if (!session) {
+      res.status(404).json({ message: 'Session not found' });
+      return;
+    }
+    const plan = await CounselingPlan.findOne({
+      sessionId: req.params.id,
+      userId: (req.user as IUser)._id,
+    }).lean();
+    res.json({ counselingPlan: plan ?? null });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching counseling plan');
+    res.status(500).json({ message: 'Error fetching counseling plan' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Counseling Plan — user override step status
+// ---------------------------------------------------------------------------
+router.patch('/sessions/:id/counseling-plan/steps/:stepId', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    const { status } = req.body as { status?: string };
+    const validStatuses = ['pending', 'in_progress', 'completed'];
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ message: `Status must be one of: ${validStatuses.join(', ')}` });
+      return;
+    }
+    // Verify session ownership
+    const session = await ChatSession.findOne({
+      _id: req.params.id,
+      userId: (req.user as IUser)._id,
+    });
+    if (!session) {
+      res.status(404).json({ message: 'Session not found' });
+      return;
+    }
+
+    const updateFields: Record<string, unknown> = { 'steps.$.status': status };
+    if (status === 'completed') {
+      updateFields['steps.$.completedAt'] = new Date();
+    }
+
+    const plan = await CounselingPlan.findOneAndUpdate(
+      {
+        sessionId: req.params.id,
+        userId: (req.user as IUser)._id,
+        'steps.stepId': req.params.stepId,
+      },
+      { $set: updateFields },
+      { new: true },
+    );
+    if (!plan) {
+      res.status(404).json({ message: 'Step not found in counseling plan' });
+      return;
+    }
+    res.json({ counselingPlan: plan });
+  } catch (error) {
+    log.error({ err: error }, 'Error updating counseling plan step');
+    res.status(500).json({ message: 'Error updating step' });
   }
 });
 

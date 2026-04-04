@@ -1,8 +1,9 @@
 import {
   List, Datagrid, TextField, DateField, FunctionField,
   EditButton, Edit, SimpleForm, SelectInput, TextInput,
-  ReferenceInput, useRecordContext, useDataProvider, useRefresh, useNotify,
-  TopToolbar, FilterButton, SearchInput,
+  ReferenceInput, ReferenceField, useRecordContext,
+  useDataProvider, useRefresh, useNotify,
+  TopToolbar, FilterButton, SearchInput, ExportButton,
 } from 'react-admin';
 import { Chip, Button, Box, Stack } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
@@ -78,7 +79,7 @@ export function UserList() {
     <List
       filters={userFilters}
       sort={{ field: 'createdAt', order: 'DESC' }}
-      actions={<TopToolbar><FilterButton /></TopToolbar>}
+      actions={<TopToolbar><FilterButton /><ExportButton /></TopToolbar>}
     >
       <Datagrid rowClick="edit">
         <TextField source="email" />
@@ -102,7 +103,10 @@ export function UserList() {
             />
           )}
         />
+        <TextField source="provider" label="Provider" />
         <TextField source="languageCode" label="Language" />
+        <ReferenceField source="userGroupId" reference="user-groups" link={false}><TextField source="name" /></ReferenceField>
+        <ReferenceField source="subscriptionId" reference="subscriptions" link={false}><TextField source="name" /></ReferenceField>
         <DateField source="createdAt" showTime />
         <EditButton />
         <LockUserButton />

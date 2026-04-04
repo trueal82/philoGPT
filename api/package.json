@@ -1,7 +1,7 @@
 {
-  "name": "philogpt-backend",
+  "name": "philogpt-api",
   "version": "1.0.0",
-  "description": "PhiloGPT backend API",
+  "description": "PhiloGPT API service",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",

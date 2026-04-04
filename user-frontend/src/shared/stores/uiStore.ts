@@ -15,7 +15,7 @@ function applyTheme(theme: Theme) {
 
 interface UIState {
   sidebarOpen: boolean;
-  activeModal: 'profile' | 'memory' | 'newChat' | 'changePassword' | null;
+  activeModal: 'profile' | 'memory' | 'newChat' | 'changePassword' | 'counselingPlan' | null;
   theme: Theme;
   toggleSidebar: () => void;
   openModal: (modal: UIState['activeModal']) => void;

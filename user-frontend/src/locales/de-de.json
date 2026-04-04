@@ -70,5 +70,17 @@
     "installTitle": "PhiloGPT installieren",
     "installMessage": "F\u00fcge PhiloGPT zu deinem Startbildschirm hinzu f\u00fcr ein besseres Erlebnis.",
     "installButton": "Installieren",
-    "dismiss": "Sp\u00e4ter"  }
+    "dismiss": "Sp\u00e4ter"  },
+  "counselingPlan": {
+    "title": "Beratungsplan",
+    "empty": "Noch kein Beratungsplan vorhanden. Er erscheint im Laufe des Gespr\u00e4chs.",
+    "close": "Schlie\u00dfen",
+    "openTooltip": "Beratungsplan anzeigen",
+    "toggleStatus": "Schrittstatus \u00e4ndern",
+    "status": {
+      "pending": "Ausstehend",
+      "in_progress": "In Bearbeitung",
+      "completed": "Abgeschlossen"
+    }
+  }
 }

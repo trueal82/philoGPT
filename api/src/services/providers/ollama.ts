@@ -115,6 +115,11 @@ class OllamaProvider implements ILLMProvider {
             }
           }
         }
+        // Bare [tool_call] with no JSON payload — model tried to call a tool
+        // but failed to produce the structured format. Treat as empty response
+        // so the retry/fallback logic can handle it.
+        log.warn({ content }, 'Bare [tool_call] text with no JSON payload — treating as empty response');
+        return { type: 'response', content: '' };
       }
 
       if (content) {

@@ -1,0 +1,20 @@
+/** appCollections.ts — canonical list of app-managed MongoDB collections. */
+export const APP_COLLECTIONS = [
+  'users',
+  'bots',
+  'playgroundsessions',
+  'messages',
+  'systemprompts',
+  'profiles',
+  'chatsessions',
+  'clientmemories',
+  'llmconfigs',
+  'languages',
+  'usergroups',
+  'subscriptions',
+  'botlocales',
+  'tools',
+  'toolcalllogs',
+  'smtpconfigs',
+  'counselingplans',
+] as const;

@@ -5,10 +5,10 @@ version: '3.8'
 # docker-compose.yml never needs to be edited directly.
 
 services:
-  backend:
-    build: ./backend
+  api:
+    build: ./api
     ports:
-      - "${BACKEND_PORT:-5001}:5001"
+      - "${API_PORT:-5001}:5001"
     environment:
       - MONGODB_URI=mongodb://mongo:27017/philogpt
       - PORT=5001
@@ -33,7 +33,7 @@ services:
     ports:
       - "${ADMIN_PORT:-3001}:3001"
     environment:
-      - BACKEND_URL=${API_URL}
+      - API_URL=${API_URL}
     restart: unless-stopped
 
   user-frontend:
@@ -41,7 +41,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-3002}:3002"
     environment:
-      - BACKEND_URL=${API_URL}
+      - API_URL=${API_URL}
       - SOCKET_URL=${API_URL}
     restart: unless-stopped
 

@@ -2,7 +2,7 @@
  * seedConfig.ts — Environment-based defaults for database seeding.
  *
  * Values are used by `src/scripts/seedOnStartup.ts` and `src/scripts/initDefaultData.ts`
- * to optionally seed the database on backend startup.
+ * to optionally seed the database on API startup.
  *
  * Env vars:
  *   SEED_ON_EMPTY_DB  — "true" to seed default data when the database is empty (default: false)

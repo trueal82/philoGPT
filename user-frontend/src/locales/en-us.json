@@ -72,5 +72,17 @@
     "installMessage": "Add PhiloGPT to your home screen for the best experience.",
     "installButton": "Install",
     "dismiss": "Not now"
+  },
+  "counselingPlan": {
+    "title": "Counseling Plan",
+    "empty": "No counseling plan yet. It will appear as the conversation progresses.",
+    "close": "Close",
+    "openTooltip": "View counseling plan",
+    "toggleStatus": "Toggle step status",
+    "status": {
+      "pending": "Pending",
+      "in_progress": "In Progress",
+      "completed": "Completed"
+    }
   }
 }

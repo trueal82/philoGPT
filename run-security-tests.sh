@@ -2,7 +2,7 @@
 # run-security-tests.sh — One-command security test runner.
 #
 # Uses mongodb-memory-server (in-process), so no external MongoDB is needed.
-# Simply runs the backend security test suite and reports results.
+# Simply runs the API security test suite and reports results.
 #
 # Usage:
 #   ./run-security-tests.sh          # run security tests
@@ -10,7 +10,13 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/backend"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./launcher-common.sh
+. "$ROOT_DIR/launcher-common.sh"
+
+set_terminal_title "philoGPT: run-security-tests"
+
+cd "$ROOT_DIR/api"
 
 echo "==> Installing dependencies..."
 npm ci --silent 2>/dev/null || npm install --silent

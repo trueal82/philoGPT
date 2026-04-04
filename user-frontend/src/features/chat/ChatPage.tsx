@@ -9,6 +9,7 @@ import ProfileModal from '@/features/user/ProfileModal';
 import ClientMemoryModal from '@/features/user/ClientMemoryModal';
 import ChangePasswordModal from '@/features/user/ChangePasswordModal';
 import InstallPrompt from '@/features/pwa/InstallPrompt';
+import CounselingPlanModal from './CounselingPlanModal';
 import { useUIStore } from '@/shared/stores/uiStore';
 
 export default function ChatPage() {
@@ -34,6 +35,7 @@ export default function ChatPage() {
       {activeModal === 'profile' && <ProfileModal />}
       {activeModal === 'memory' && <ClientMemoryModal />}
       {activeModal === 'changePassword' && <ChangePasswordModal />}
+      {activeModal === 'counselingPlan' && sessionId && <CounselingPlanModal sessionId={sessionId} />}
       <InstallPrompt />
       <Toast />
     </div>
