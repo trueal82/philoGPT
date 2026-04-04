@@ -138,26 +138,31 @@ No rebuild is needed; Compose re-reads the env file when containers restart.
 
 ### Forcing a full reseed (destructive)
 
-Only use this if you want to **wipe all app data** and start fresh (e.g. development/staging reset):
+Only use this if you want to **wipe all app data** and start fresh (e.g. development/staging reset).
 
-1. Set in `.env`:
-   ```
-   PURGE_AND_RESEED=true
-   ```
-2. Restart the API:
-   ```bash
-   docker compose up -d api
-   ```
-3. Once the logs confirm seeding completed, **immediately** set it back:
-   ```
-   PURGE_AND_RESEED=false
-   ```
-4. Restart again to clear the flag:
-   ```bash
-   docker compose up -d api
-   ```
+Pass the flag as an inline variable so `.env` is never modified and no reset step is needed.
 
-> **Warning:** `PURGE_AND_RESEED=true` drops all app collections including users, sessions, memories, and logs. Never leave it set in production.
+Without `sudo`:
+```bash
+PURGE_AND_RESEED=true docker compose up -d --force-recreate api
+```
+
+With `sudo` (Synology / restricted environments) — use `sudo env` so the variable survives sudo's environment stripping:
+```bash
+sudo env PURGE_AND_RESEED=true docker compose up -d --force-recreate api
+```
+
+The variable only applies to that single invocation. The next `docker compose up -d` reads `.env` again (`PURGE_AND_RESEED=false`), so the flag cannot accidentally persist.
+
+`--force-recreate` is required because Compose only recreates a container when its image changes; without it, an env-only change is silently ignored.
+
+Verify the reseed completed:
+
+```bash
+docker compose logs api --tail=60
+```
+
+> **Warning:** `PURGE_AND_RESEED=true` drops all app collections including users, sessions, memories, and logs. Never run this against a production database unless you intend to lose all data.
 
 ### Adding a seed patch (for developers)
 

@@ -36,14 +36,14 @@ async function purgeAppCollections(): Promise<void> {
 }
 
 export async function seedOnStartup(): Promise<void> {
-  if (!SEED_ON_EMPTY_DB) {
-    log.debug('SEED_ON_EMPTY_DB is not enabled — skipping seed check');
-    return;
-  }
-
   if (PURGE_AND_RESEED) {
     log.warn('PURGE_AND_RESEED=true — dropping all app collections before seed');
     await purgeAppCollections();
+  }
+
+  if (!SEED_ON_EMPTY_DB) {
+    log.debug('SEED_ON_EMPTY_DB is not enabled — skipping seed check');
+    return;
   }
 
   await ensureDemoDataIfDatabaseEmpty();

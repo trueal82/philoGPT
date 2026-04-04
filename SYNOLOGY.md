@@ -142,17 +142,10 @@ The API is called by the browsers directly, so it needs its own public hostname:
 | Enable | ✓ |
 | Hostname | `philogpt-api.example.com` |
 | HTTPS | ✓ |
-| Target server | `http://localhost:5001` |
+| Target server | `http://localhost:<API_PORT>` (use the value of `API_PORT` from your `.env`, default `5001`) |
 | WebSocket support | ✓ (Socket.IO) |
 
-Once the API hostname is set, update `ALLOWED_ORIGINS` in `docker-compose.yml` and restart:
-
-```bash
-# In docker-compose.yml, under API > environment:
-# - ALLOWED_ORIGINS=https://philogpt.example.com,https://philogpt-admin.example.com
-
-docker compose restart api
-```
+> **Note:** `ALLOWED_ORIGINS` is assembled automatically by `docker-compose.yml` from `FRONTEND_URL` and `ADMIN_URL` — no manual edit needed.
 
 ---
 
@@ -198,21 +191,16 @@ Docker Compose will only restart containers whose images have changed.
 
 ## 6. Resetting the database
 
-To wipe all application data and reseed with defaults, set `PURGE_AND_RESEED=true` in `.env`, restart the API, then set it back to `false`:
+Pass the flag via `sudo env` so it survives sudo's environment stripping and `.env` is never modified:
 
 ```bash
-# 1. Enable the purge flag
-sed -i 's/^PURGE_AND_RESEED=.*/PURGE_AND_RESEED=true/' /volume1/philoGPT/.env
-
-# 2. Restart the API so it runs the purge + reseed
-docker compose up -d api
-
-# 3. Confirm seeding completed
-docker compose logs api --tail=20
-
-# 4. Disable the flag so the next restart does not purge again
-sed -i 's/^PURGE_AND_RESEED=.*/PURGE_AND_RESEED=false/' /volume1/philoGPT/.env
+sudo env PURGE_AND_RESEED=true docker compose up -d --force-recreate api
+sudo docker compose logs api --follow | grep -E "Dropped|Purge|seed"
 ```
+
+The flag only applies to that single invocation. The next `docker compose up -d` reads `.env` again (`PURGE_AND_RESEED=false`), so it cannot accidentally persist.
+
+> **Warning:** This drops all app collections including users, sessions, and chat history.
 
 ---
 
