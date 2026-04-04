@@ -47,10 +47,11 @@ export function stripThoughtBlocks(text: string): string {
 /**
  * Strip Gemma 4 channel control tags from thinking text.
  * These tokens sometimes leak through Ollama's `think: true` parsing.
+ * NOTE: no .trim() here — called on individual stream tokens where whitespace must be preserved.
  */
 const CHANNEL_TAG_RE = /thought<\|channel>|<\|channel>thought|<channel\|>|<\|channel>|<\|start_of_thinking\|>|<\|end_of_thinking\|>/g;
 export function stripChannelTags(text: string): string {
-  return text.replace(CHANNEL_TAG_RE, '').trim();
+  return text.replace(CHANNEL_TAG_RE, '');
 }
 
 class OllamaProvider implements ILLMProvider {
@@ -136,7 +137,7 @@ class OllamaProvider implements ILLMProvider {
         if (thinkToken) {
           const cleaned = stripChannelTags(thinkToken);
           thinkingText += cleaned;
-          if (onThinking && cleaned) await onThinking(cleaned);
+          if (onThinking) await onThinking(cleaned);
         }
 
         // Route content tokens (strip any leaked channel tags)
@@ -175,9 +176,10 @@ class OllamaProvider implements ILLMProvider {
         if (thinkToken) {
           const cleaned = stripChannelTags(thinkToken);
           thinkingText += cleaned;
-          if (onThinking && cleaned) await onThinking(cleaned);
+          if (onThinking) await onThinking(cleaned);
         }
-        const token = parsed.message?.content ?? '';
+        const rawToken = parsed.message?.content ?? '';
+        const token = rawToken ? stripChannelTags(rawToken) : '';
         if (token) {
           fullContent += token;
           await onToken(token);
