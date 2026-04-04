@@ -23,6 +23,8 @@ import ClientMemory from '../models/ClientMemory';
 import SmtpConfig from '../models/SmtpConfig';
 import ToolCallLog from '../models/ToolCallLog';
 import CounselingPlan from '../models/CounselingPlan';
+import SeedVersion from '../models/SeedVersion';
+import LLMLog from '../models/LLMLog';
 import { sendTestMailWithConfig } from '../services/mailService';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { createLogger } from '../config/logger';
@@ -1455,6 +1457,160 @@ router.delete('/counseling-plans/:id', authenticateToken, requireAdmin, async (r
   } catch (error) {
     log.error({ err: error }, 'Error deleting counseling plan');
     res.status(500).json({ message: 'Error deleting counseling plan' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Seed Versions (read-only)
+// ---------------------------------------------------------------------------
+router.get('/seed-versions', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const versions = await SeedVersion.find().sort({ appliedAt: 1 }).lean();
+    res.json({ versions });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching seed versions');
+    res.status(500).json({ message: 'Error fetching seed versions' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LLM Logs
+// ---------------------------------------------------------------------------
+
+// Stats — MUST be before /:id to avoid Express matching "stats" as an id
+router.get('/llm-logs/stats', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) { res.status(500).json({ message: 'Database not initialized' }); return; }
+    let count = 0;
+    let estimatedSizeBytes = 0;
+    try {
+      const stats = await db.command({ collStats: 'llmlogs' });
+      count = stats.count ?? 0;
+      estimatedSizeBytes = stats.size ?? 0;
+    } catch {
+      // Collection may not exist yet
+      count = 0;
+      estimatedSizeBytes = 0;
+    }
+    res.json({ count, estimatedSizeBytes });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching LLM log stats');
+    res.status(500).json({ message: 'Error fetching LLM log stats' });
+  }
+});
+
+// Bulk delete
+router.post('/llm-logs/bulk-delete', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: string[] };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids array is required' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ message: 'Maximum 500 ids per request' });
+      return;
+    }
+    const validIds = ids.filter((id) => isValidObjectId(id));
+    const result = await LLMLog.deleteMany({ _id: { $in: validIds } });
+    log.info({ count: result.deletedCount }, 'Bulk-deleted LLM logs');
+    res.json({ deletedCount: result.deletedCount });
+  } catch (error) {
+    log.error({ err: error }, 'Error bulk-deleting LLM logs');
+    res.status(500).json({ message: 'Error bulk-deleting LLM logs' });
+  }
+});
+
+// Delete by session — MUST be before /:id
+router.delete('/llm-logs/session/:sessionId', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.sessionId)) {
+      res.status(400).json({ message: 'Invalid session ID' });
+      return;
+    }
+    const result = await LLMLog.deleteMany({ sessionId: req.params.sessionId });
+    log.info({ sessionId: req.params.sessionId, count: result.deletedCount }, 'Deleted LLM logs for session');
+    res.json({ deletedCount: result.deletedCount });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting LLM logs for session');
+    res.status(500).json({ message: 'Error deleting LLM logs for session' });
+  }
+});
+
+// List (paginated + filtered)
+router.get('/llm-logs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+
+    const filter: Record<string, unknown> = {};
+    if (req.query.sessionId && isValidObjectId(req.query.sessionId as string)) {
+      filter.sessionId = req.query.sessionId;
+    }
+    if (req.query.userId && isValidObjectId(req.query.userId as string)) {
+      filter.userId = req.query.userId;
+    }
+    if (req.query.botId && isValidObjectId(req.query.botId as string)) {
+      filter.botId = req.query.botId;
+    }
+    if (req.query.from || req.query.to) {
+      const dateFilter: Record<string, Date> = {};
+      if (req.query.from) dateFilter.$gte = new Date(req.query.from as string);
+      if (req.query.to) dateFilter.$lte = new Date(req.query.to as string);
+      if (Object.keys(dateFilter).length > 0) filter.createdAt = dateFilter;
+    }
+
+    const total = await LLMLog.countDocuments(filter);
+    const logs = await LLMLog.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    res.json({ logs, total, page, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching LLM logs');
+    res.status(500).json({ message: 'Error fetching LLM logs' });
+  }
+});
+
+// Get one
+router.get('/llm-logs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid log ID' });
+      return;
+    }
+    const logEntry = await LLMLog.findById(req.params.id).lean();
+    if (!logEntry) {
+      res.status(404).json({ message: 'LLM log not found' });
+      return;
+    }
+    res.json({ log: logEntry });
+  } catch (error) {
+    log.error({ err: error }, 'Error fetching LLM log');
+    res.status(500).json({ message: 'Error fetching LLM log' });
+  }
+});
+
+// Delete one
+router.delete('/llm-logs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      res.status(400).json({ message: 'Invalid log ID' });
+      return;
+    }
+    const logEntry = await LLMLog.findByIdAndDelete(req.params.id);
+    if (!logEntry) {
+      res.status(404).json({ message: 'LLM log not found' });
+      return;
+    }
+    log.info({ id: req.params.id }, 'Deleted LLM log');
+    res.json({ message: 'LLM log deleted' });
+  } catch (error) {
+    log.error({ err: error }, 'Error deleting LLM log');
+    res.status(500).json({ message: 'Error deleting LLM log' });
   }
 });
 

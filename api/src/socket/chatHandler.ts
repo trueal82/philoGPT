@@ -37,6 +37,8 @@ import {
 } from '../services/toolService';
 import { createLogger } from '../config/logger';
 import ToolCallLog from '../models/ToolCallLog';
+import LLMLog from '../models/LLMLog';
+import type { LLMResult } from '../services/providers/types';
 import type pino from 'pino';
 
 const log = createLogger('chat-handler');
@@ -377,7 +379,9 @@ async function runLLMWithToolLoop(
     socket.emit('chat:thinking', { sessionId, token });
   };
 
+  let callStart = Date.now();
   let result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
+  writeLLMLog(sessionId, userId, botId, botName, llmConfig, 0, contextMessages, result, thinkingText, Date.now() - callStart, socketLog);
 
   let toolRound = 0;
   while (result.type === 'tool_calls' && toolRound < MAX_TOOL_ROUNDS) {
@@ -481,7 +485,9 @@ async function runLLMWithToolLoop(
       content: 'Tool calls have been processed. Now respond naturally to the user based on the conversation and tool results above. Do not make another tool call unless absolutely necessary.',
     });
 
+    callStart = Date.now();
     result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
+    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound, contextMessages, result, thinkingText, Date.now() - callStart, socketLog);
 
     // Use inline trailing content if the LLM returned empty
     if (result.type === 'response' && result.content === '' && trailingContent) {
@@ -527,7 +533,9 @@ async function runLLMWithToolLoop(
       content: 'Now respond to the user naturally, incorporating the tool results above.',
     });
 
+    callStart = Date.now();
     const retry = await streamLLMResponse(llmConfig, flattenedMessages, emitToken, undefined, emitThinking);
+    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound + 1, flattenedMessages, retry, thinkingText, Date.now() - callStart, socketLog);
     fullResponse = retry.type === 'response' ? retry.content : '';
     if (retry.type === 'response' && retry.stats) lastStats = retry.stats;
   }
@@ -549,4 +557,58 @@ async function runLLMWithToolLoop(
   }
 
   return { content: fullResponse, metadata };
+}
+
+// ---------------------------------------------------------------------------
+// LLM Log persistence (fire-and-forget — never affects the tool loop)
+// ---------------------------------------------------------------------------
+
+function computeExpireAt(): Date | null {
+  const days = parseFloat(process.env.LLM_LOG_TTL_DAYS ?? '');
+  if (!days || days <= 0) return null;
+  return new Date(Date.now() + days * 86_400_000);
+}
+
+function writeLLMLog(
+  sessionId: string,
+  userId: string,
+  botId: string,
+  botName: string,
+  llmConfig: ILLMConfig,
+  toolRound: number,
+  requestMessages: ChatMessage[],
+  result: LLMResult,
+  thinkingText: string,
+  durationMs: number,
+  socketLog: Logger,
+): void {
+  const stats: Record<string, unknown> = { durationMs };
+  if (result.type === 'response' && result.stats) {
+    const s = result.stats;
+    if (s.evalCount && s.evalDuration) {
+      stats.tokensPerSecond = Math.round((s.evalCount / s.evalDuration) * 1e9 * 100) / 100;
+    }
+    if (s.evalCount) stats.evalTokens = s.evalCount;
+    if (s.promptEvalCount) stats.promptTokens = s.promptEvalCount;
+    if (s.totalDuration) stats.totalDurationNs = s.totalDuration;
+  }
+
+  LLMLog.create({
+    sessionId,
+    userId,
+    botId,
+    botName,
+    model: llmConfig.model,
+    provider: llmConfig.provider,
+    toolRound,
+    requestMessages,
+    responseType: result.type,
+    responseContent: result.type === 'response' ? result.content : '',
+    responseToolCalls: result.type === 'tool_calls' ? result.calls : [],
+    thinkingContent: thinkingText,
+    stats,
+    expireAt: computeExpireAt(),
+  }).catch((err) => {
+    socketLog.error({ err }, 'LLM log write failed');
+  });
 }

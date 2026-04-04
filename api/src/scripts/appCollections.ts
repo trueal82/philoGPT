@@ -17,4 +17,6 @@ export const APP_COLLECTIONS = [
   'toolcalllogs',
   'smtpconfigs',
   'counselingplans',
+  'llmlogs',
+  'seedversions',
 ] as const;

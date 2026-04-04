@@ -36,12 +36,14 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(() =>
-        caches.match('/').then((cached) => cached || fetch(request))
+        caches.match('/').then((cached) => cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/html' } }))
       )
     );
   } else {
     event.respondWith(
-      caches.match(request).then((cached) => cached || fetch(request))
+      caches.match(request).then((cached) =>
+        cached || fetch(request).catch(() => new Response('', { status: 503 }))
+      )
     );
   }
 });

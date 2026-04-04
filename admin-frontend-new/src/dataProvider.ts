@@ -127,6 +127,13 @@ const buildMeta = (apiUrl: string): Record<string, ResourceMeta> => ({
     listKey: 'counselingPlans',
     singleKey: 'counselingPlan',
   },
+  'llm-logs': {
+    listUrl: `${apiUrl}/api/admin/llm-logs`,
+    oneUrl: `${apiUrl}/api/admin/llm-logs/:id`,
+    deleteUrl: `${apiUrl}/api/admin/llm-logs/:id`,
+    listKey: 'logs',
+    singleKey: 'log',
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -190,6 +197,9 @@ export interface PhiloDataProvider extends DataProvider {
   deleteSystemPromptLocale: (languageCode: string) => Promise<{ data: unknown }>;
   getSessionMessages: (sessionId: string) => Promise<{ data: unknown[] }>;
   testSmtpConfig: (payload: Record<string, unknown>) => Promise<{ data: unknown }>;
+  deleteLLMLogsForSession: (sessionId: string) => Promise<void>;
+  getLLMLogStats: () => Promise<{ data: { count: number; estimatedSizeBytes: number } }>;
+  getSeedVersions: () => Promise<{ data: unknown[] }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +229,23 @@ export const createDataProvider = (apiUrl: string): PhiloDataProvider => {
         query.set('page', String(page));
         query.set('limit', String(perPage));
         if (params.filter?.userId) query.set('userId', params.filter.userId);
+        const { json } = await httpClient(`${m.listUrl}?${query}`);
+        return {
+          data: mapIds(json[m.listKey]),
+          total: json.total,
+        };
+      }
+
+      // LLM logs: server-side pagination + filters
+      if (resource === 'llm-logs') {
+        const query = new URLSearchParams();
+        query.set('page', String(page));
+        query.set('limit', String(perPage));
+        if (params.filter?.sessionId) query.set('sessionId', params.filter.sessionId);
+        if (params.filter?.userId) query.set('userId', params.filter.userId);
+        if (params.filter?.botId) query.set('botId', params.filter.botId);
+        if (params.filter?.from) query.set('from', params.filter.from);
+        if (params.filter?.to) query.set('to', params.filter.to);
         const { json } = await httpClient(`${m.listUrl}?${query}`);
         return {
           data: mapIds(json[m.listKey]),
@@ -320,6 +347,14 @@ export const createDataProvider = (apiUrl: string): PhiloDataProvider => {
     // deleteMany
     // -----------------------------------------------------------------------
     async deleteMany(resource: any, params: any) {
+      // LLM logs: use bulk-delete endpoint
+      if (resource === 'llm-logs') {
+        await httpClient(`${apiUrl}/api/admin/llm-logs/bulk-delete`, {
+          method: 'POST',
+          body: JSON.stringify({ ids: params.ids }),
+        });
+        return { data: params.ids };
+      }
       await Promise.all(
         params.ids.map((id: any) => provider.delete(resource, { id, previousData: { id } })),
       );
@@ -411,6 +446,22 @@ export const createDataProvider = (apiUrl: string): PhiloDataProvider => {
         body: JSON.stringify(payload),
       });
       return { data: json };
+    },
+
+    async deleteLLMLogsForSession(sessionId: string) {
+      await httpClient(`${apiUrl}/api/admin/llm-logs/session/${sessionId}`, {
+        method: 'DELETE',
+      });
+    },
+
+    async getLLMLogStats() {
+      const { json } = await httpClient(`${apiUrl}/api/admin/llm-logs/stats`);
+      return { data: json };
+    },
+
+    async getSeedVersions() {
+      const { json } = await httpClient(`${apiUrl}/api/admin/seed-versions`);
+      return { data: json.versions || [] };
     },
   };
 

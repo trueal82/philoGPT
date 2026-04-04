@@ -48,6 +48,11 @@
     "chatResent": "Connection restored. Message resent.",
     "chatFailed": "Chat request failed."
   },
+  "error": {
+    "title": "Something went wrong",
+    "sessionNotFound": "This conversation could not be loaded. It may have been deleted or is no longer available.",
+    "backToStart": "Back to start"
+  },
   "modal": {
     "choosePhilosopher": "Choose a Philosopher",
     "loadingPhilosophers": "Loading philosophers…",

@@ -48,6 +48,11 @@
     "chatResent": "Verbindung wiederhergestellt. Nachricht erneut gesendet.",
     "chatFailed": "Chat-Anfrage fehlgeschlagen."
   },
+  "error": {
+    "title": "Etwas ist schiefgelaufen",
+    "sessionNotFound": "Diese Unterhaltung konnte nicht geladen werden. Sie wurde möglicherweise gelöscht oder ist nicht mehr verfügbar.",
+    "backToStart": "Zurück zur Startseite"
+  },
   "modal": {
     "choosePhilosopher": "Wähle einen Philosophen",
     "loadingPhilosophers": "Philosophen werden geladen…",

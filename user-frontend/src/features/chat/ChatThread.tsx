@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Message as MessageType } from '@/shared/types';
 import * as api from '@/shared/api/endpoints';
@@ -19,6 +20,7 @@ interface Props {
 export default function ChatThread({ sessionId }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const openModal = useUIStore((s) => s.openModal);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -30,13 +32,20 @@ export default function ChatThread({ sessionId }: Props) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['messages', sessionId],
     queryFn: () => api.getMessages(sessionId),
     select: (d) => d.messages,
+    retry: false,
   });
 
   const messages = data ?? [];
+
+  // If the session is gone (404 / network error), show error modal
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  useEffect(() => {
+    if (isError) setShowErrorModal(true);
+  }, [isError]);
 
   // Auto-scroll to bottom on new messages, streaming tokens, or waiting state.
   // Use 'instant' during streaming so rapid token updates don't queue competing
@@ -168,6 +177,26 @@ export default function ChatThread({ sessionId }: Props) {
     },
     [sessionId, queryClient, t],
   );
+
+  if (showErrorModal) {
+    return (
+      <div className="chat-thread">
+        <div className="modal-overlay" style={{ position: 'absolute', zIndex: 10 }}>
+          <div className="modal-content modal-sm" role="alertdialog" aria-label={t('error.title')} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('error.title')}</h2>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              <p style={{ marginBottom: '1rem' }}>{t('error.sessionNotFound')}</p>
+              <button className="btn btn-primary" onClick={() => { setShowErrorModal(false); navigate('/chat', { replace: true }); }}>
+                {t('error.backToStart')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="chat-thread"><p className="chat-loading">{t('chat.loadingMessages')}</p></div>;

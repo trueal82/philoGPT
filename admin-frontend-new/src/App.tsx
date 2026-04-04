@@ -16,12 +16,15 @@ import ChatIcon from '@mui/icons-material/Chat';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import StorageIcon from '@mui/icons-material/Storage';
+import BuildCircleIcon from '@mui/icons-material/BuildCircle';
 
 import { createAuthProvider } from './authProvider';
 import { createDataProvider } from './dataProvider';
 
 import Dashboard from './pages/Dashboard';
 import SystemPromptPage from './pages/SystemPromptPage';
+import MaintenancePage from './pages/MaintenancePage';
 
 import { UserList, UserEdit } from './resources/users';
 import { BotList, BotCreate, BotEdit } from './resources/bots';
@@ -35,6 +38,7 @@ import { ClientMemoryList, ClientMemoryCreate, ClientMemoryEdit } from './resour
 import { SmtpConfigList, SmtpConfigCreate, SmtpConfigEdit } from './resources/smtpConfigs';
 import { ToolCallLogList, ToolCallLogShow } from './resources/toolCallLogs';
 import { CounselingPlanList, CounselingPlanShow } from './resources/counselingPlans';
+import { LLMLogList, LLMLogShow } from './resources/llmLogs';
 
 function MenuGroupLabel({ label }: { label: string }) {
   return (
@@ -72,6 +76,10 @@ function AdminMenu() {
       <Menu.ResourceItem name="client-memories" />
       <Menu.ResourceItem name="counseling-plans" />
       <Menu.ResourceItem name="tool-call-logs" />
+      <Menu.ResourceItem name="llm-logs" />
+
+      <MenuGroupLabel label="System" />
+      <Menu.Item to="/maintenance" primaryText="Maintenance" leftIcon={<BuildCircleIcon />} />
     </Menu>
   );
 }
@@ -138,9 +146,13 @@ export default function App({ apiUrl }: AppProps) {
       <Resource name="tool-call-logs" list={ToolCallLogList} show={ToolCallLogShow}
         icon={ReceiptLongIcon}
         options={{ label: 'Tool Call Logs' }} />
+      <Resource name="llm-logs" list={LLMLogList} show={LLMLogShow}
+        icon={StorageIcon}
+        options={{ label: 'LLM Logs' }} />
 
       <CustomRoutes>
         <Route path="/system-prompt" element={<SystemPromptPage />} />
+        <Route path="/maintenance" element={<MaintenancePage />} />
       </CustomRoutes>
     </Admin>
   );

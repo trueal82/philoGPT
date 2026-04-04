@@ -19,7 +19,7 @@ function resolveLevel(): string {
   if (process.env.LOG_LEVEL) return process.env.LOG_LEVEL;
   if (isTest) return 'silent';
   if (isProduction) return 'info';
-  return 'debug';
+  return 'info';
 }
 
 const logger = pino({
