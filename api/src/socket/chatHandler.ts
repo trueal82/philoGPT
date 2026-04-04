@@ -26,7 +26,8 @@ import Message from '../models/Message';
 import SystemPrompt from '../models/SystemPrompt';
 
 import { streamLLMResponse, ChatMessage } from '../services/llmService';
-import { resolveLocale, buildSystemMessage, resolveSystemPromptContent } from '../services/promptLocalizationService';
+import { stripThoughtBlocks } from '../services/providers/ollama';
+import { resolveLocale, resolveSystemPromptContent, renderSystemPrompt, PromptVars } from '../services/promptLocalizationService';
 import {
   getEnabledTools,
   buildOllamaToolDefinitions,
@@ -172,7 +173,6 @@ async function handleChatSend(
     const history = await Message.find({ sessionId }).sort({ createdAt: -1 }).limit(20).lean();
     history.reverse();
 
-    const isFirstUserMessageInSession = history.length === 1 && history[0]?.role === 'user';
     const lockedLang = (session as any).lockedLanguageCode || 'en-us';
     const resolved = await resolveLocale(bot as any, lockedLang);
 
@@ -191,7 +191,6 @@ async function handleChatSend(
     const systemMessage = await buildFullSystemMessage(
       resolved,
       lockedLang,
-      isFirstUserMessageInSession,
       userIdStr,
       botIdStr,
       sessionId,
@@ -215,7 +214,7 @@ async function handleChatSend(
     );
 
     // --- Run the LLM + tool loop ---
-    const fullResponse = await runLLMWithToolLoop(
+    const { content: fullResponse, metadata: responseMeta } = await runLLMWithToolLoop(
       socket,
       socketLog,
       sessionId,
@@ -235,11 +234,16 @@ async function handleChatSend(
       socketLog.warn('Final response empty or bare [tool_call]; sending fallback');
     }
     const finalContent = sanitizedResponse || 'I seem to have lost my train of thought. Could you repeat what you just said?';
-    const assistantMessage = new Message({ sessionId, role: 'assistant', content: finalContent });
+    const assistantMessage = new Message({
+      sessionId,
+      role: 'assistant',
+      content: finalContent,
+      metadata: responseMeta,
+    });
     await assistantMessage.save();
     await ChatSession.findByIdAndUpdate(sessionId, { updatedAt: new Date() });
 
-    socket.emit('chat:done', { sessionId, message: assistantMessage });
+    socket.emit('chat:done', { sessionId, message: assistantMessage, metadata: responseMeta });
     socketLog.info({ responseLength: fullResponse.length }, 'Assistant response complete');
   } catch (err) {
     socketLog.error({ err }, 'Unexpected error in chat:send handler');
@@ -252,56 +256,53 @@ async function handleChatSend(
 // ---------------------------------------------------------------------------
 
 /**
- * Build the full system message: global prompt + locale prompt + optional
- * memory key index on the first turn.
+ * Build the full system message by rendering the global prompt template with
+ * all injected variables. Each async injector is individually guarded: on
+ * failure it logs ERROR and substitutes a static fallback — the prompt is
+ * never polluted with error messages or stack traces.
  */
 async function buildFullSystemMessage(
   resolved: Awaited<ReturnType<typeof resolveLocale>>,
   lockedLang: string,
-  isFirstTurn: boolean,
   userId: string,
   botId: string,
   sessionId: string,
   socketLog: Logger,
 ): Promise<string> {
   const globalPrompt = await SystemPrompt.findOne({ isActive: true }).lean();
-  let systemMsg = '';
+  const template = globalPrompt ? resolveSystemPromptContent(globalPrompt as any, lockedLang) : '';
 
-  if (globalPrompt?.content) {
-    systemMsg += resolveSystemPromptContent(globalPrompt as any, lockedLang) + '\n\n';
-  }
-  systemMsg += buildSystemMessage(resolved, lockedLang);
-
-  if (isFirstTurn) {
-    const memoryKeys = await getClientMemoryKeys(userId, botId);
-    const memoryKeyLines =
-      memoryKeys.length > 0
-        ? memoryKeys.map((key) => `- ${key}`).join('\n')
-        : '- (no stored keys yet)';
-
-    systemMsg += [
-      '',
-      'CLIENT MEMORY KEY INDEX FOR THIS USER/BOT:',
-      'Use these exact key names when deciding what to read/update via client_memory.',
-      memoryKeyLines,
-    ].join('\n');
-
-    socketLog.debug(
-      { memoryKeyCount: memoryKeys.length },
-      'Injected memory key index into first-turn system prompt',
-    );
+  // --- Injector: counseling plan (fails loudly in logs, silently in prompt) ---
+  let counselingPlan = 'No counseling plan yet. Use counseling_plan add_step to create one when you identify the user\'s needs.';
+  try {
+    const result = await getCounselingPlanSummary(sessionId, userId, botId);
+    if (result) counselingPlan = result;
+  } catch (err) {
+    socketLog.error({ err, userId, botId, sessionId }, 'getCounselingPlanSummary failed — using fallback');
   }
 
-  // Inject current counseling plan state
-  const planSummary = await getCounselingPlanSummary(sessionId, userId, botId);
-  if (planSummary) {
-    systemMsg += '\n\nCURRENT SESSION COUNSELING PLAN:\n' + planSummary;
-    systemMsg += '\nUse counseling_plan tool to read/add/update steps. Keep the plan current every turn.';
-  } else {
-    systemMsg += '\n\nNo counseling plan exists for this session yet. Use counseling_plan add_step to create one when you identify the user\'s needs.';
+  // --- Injector: memory key index (fails loudly in logs, silently in prompt) ---
+  let memoryKeyIndex = '- (no stored keys yet)';
+  try {
+    const keys = await getClientMemoryKeys(userId, botId);
+    if (keys.length > 0) {
+      memoryKeyIndex = keys.map((k) => `- ${k}`).join('\n');
+    }
+    socketLog.debug({ memoryKeyCount: keys.length }, 'Memory key index injected');
+  } catch (err) {
+    socketLog.error({ err, userId, botId }, 'getClientMemoryKeys failed — using fallback');
   }
 
-  return systemMsg;
+  const vars: PromptVars = {
+    COUNSELING_PLAN: counselingPlan,
+    MEMORY_KEY_INDEX: memoryKeyIndex,
+    BOT_NAME: resolved.name,
+    BOT_PERSONALITY: resolved.personality,
+    BOT_SYSTEM_PROMPT: resolved.systemPrompt,
+    LANGUAGE_CODE: lockedLang || 'en-us',
+  };
+
+  return renderSystemPrompt(template, vars);
 }
 
 /**
@@ -322,6 +323,12 @@ function mapStoredMessageToChat(m: Record<string, any>): ChatMessage | null {
   }
 
   const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content };
+
+  // Strip Gemma 4 thought blocks from replayed assistant messages so the model
+  // doesn't see its own previous internal reasoning (per Google best practice).
+  if (msg.role === 'assistant') {
+    msg.content = stripThoughtBlocks(msg.content);
+  }
 
   if (msg.role === 'assistant' && meta) {
     const tc = meta instanceof Map ? meta.get('tool_calls') : (meta as any)?.tool_calls;
@@ -354,7 +361,10 @@ async function runLLMWithToolLoop(
   userId: string,
   botId: string,
   botName: string,
-): Promise<string> {
+): Promise<{ content: string; metadata: Record<string, unknown> }> {
+  const startTime = Date.now();
+  const toolCallNames: string[] = [];
+  let thinkingText = '';
   const wikiLang = lockedLang.split('-')[0];
   const resolvedBotName = typeof botName === 'string' && botName.trim().length > 0
     ? botName.trim()
@@ -362,8 +372,12 @@ async function runLLMWithToolLoop(
   const emitToken = async (token: string) => {
     socket.emit('chat:token', { sessionId, token });
   };
+  const emitThinking = async (token: string) => {
+    thinkingText += token;
+    socket.emit('chat:thinking', { sessionId, token });
+  };
 
-  let result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs);
+  let result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
 
   let toolRound = 0;
   while (result.type === 'tool_calls' && toolRound < MAX_TOOL_ROUNDS) {
@@ -374,6 +388,7 @@ async function runLLMWithToolLoop(
       const toolName = call.function.name;
       const toolParams = call.function.arguments;
       socketLog.debug({ toolName, toolParams }, 'Executing tool call');
+      toolCallNames.push(toolName);
 
       const toolStartMs = Date.now();
       let toolResult: string;
@@ -466,7 +481,7 @@ async function runLLMWithToolLoop(
       content: 'Tool calls have been processed. Now respond naturally to the user based on the conversation and tool results above. Do not make another tool call unless absolutely necessary.',
     });
 
-    result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs);
+    result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
 
     // Use inline trailing content if the LLM returned empty
     if (result.type === 'response' && result.content === '' && trailingContent) {
@@ -477,6 +492,7 @@ async function runLLMWithToolLoop(
   }
 
   let fullResponse = result.type === 'response' ? result.content : '';
+  let lastStats = result.type === 'response' ? result.stats : undefined;
 
   // Handle exhausted tool rounds with trailing content
   if (fullResponse === '' && result.type === 'tool_calls' && result.inlineTrailingContent) {
@@ -511,9 +527,26 @@ async function runLLMWithToolLoop(
       content: 'Now respond to the user naturally, incorporating the tool results above.',
     });
 
-    const retry = await streamLLMResponse(llmConfig, flattenedMessages, emitToken);
+    const retry = await streamLLMResponse(llmConfig, flattenedMessages, emitToken, undefined, emitThinking);
     fullResponse = retry.type === 'response' ? retry.content : '';
+    if (retry.type === 'response' && retry.stats) lastStats = retry.stats;
   }
 
-  return fullResponse;
+  const durationMs = Date.now() - startTime;
+  const metadata: Record<string, unknown> = {
+    model: llmConfig.model,
+    durationMs,
+  };
+  if (toolCallNames.length > 0) metadata.toolCalls = toolCallNames;
+  if (thinkingText) metadata.thinking = thinkingText;
+  if (lastStats) {
+    if (lastStats.evalCount && lastStats.evalDuration) {
+      metadata.tokensPerSecond = Math.round((lastStats.evalCount / lastStats.evalDuration) * 1e9 * 100) / 100;
+    }
+    if (lastStats.evalCount) metadata.evalTokens = lastStats.evalCount;
+    if (lastStats.promptEvalCount) metadata.promptTokens = lastStats.promptEvalCount;
+    if (lastStats.totalDuration) metadata.totalDurationNs = lastStats.totalDuration;
+  }
+
+  return { content: fullResponse, metadata };
 }

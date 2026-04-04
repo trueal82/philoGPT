@@ -46,7 +46,9 @@ export default function ChatInput({ onSend, disabled, onOpenPlan }: Props) {
     const el = textareaRef.current;
     if (el) {
       el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+      const clamped = Math.min(el.scrollHeight, 200);
+      el.style.height = clamped + 'px';
+      el.style.overflowY = clamped >= 200 ? 'auto' : 'hidden';
     }
   };
 

@@ -17,9 +17,19 @@ export interface ToolCall {
   function: { name: string; arguments: Record<string, unknown> };
 }
 
+/** Ollama generation statistics from the final (done) chunk. */
+export interface LLMStats {
+  totalDuration?: number;    // nanoseconds
+  loadDuration?: number;     // nanoseconds
+  promptEvalCount?: number;  // tokens in prompt
+  promptEvalDuration?: number; // nanoseconds
+  evalCount?: number;        // tokens generated
+  evalDuration?: number;     // nanoseconds
+}
+
 /** What every provider `stream` call must return. */
 export type LLMResult =
-  | { type: 'response'; content: string }
+  | { type: 'response'; content: string; thinking?: string; stats?: LLMStats }
   | { type: 'tool_calls'; calls: ToolCall[]; inlineTrailingContent?: string };
 
 /**
@@ -27,6 +37,8 @@ export type LLMResult =
  *
  * `stream` should emit tokens via `onToken` while generating a text response,
  * and return either the full response text or the list of tool calls once done.
+ * `onThinking` (optional) receives reasoning / chain-of-thought tokens that
+ * should NOT appear in the final `content` but may be shown to the user.
  */
 export interface ILLMProvider {
   stream(
@@ -34,5 +46,6 @@ export interface ILLMProvider {
     messages: ChatMessage[],
     onToken: (token: string) => Promise<void>,
     tools?: OllamaToolDefinition[],
+    onThinking?: (token: string) => Promise<void>,
   ): Promise<LLMResult>;
 }

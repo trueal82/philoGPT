@@ -37,18 +37,20 @@ function getProvider(config: ILLMConfig): ILLMProvider {
 /**
  * Stream an LLM response, routing to the correct provider.
  *
- * @param config   LLM configuration (provider, model, apiUrl, …)
- * @param messages Conversation history including the system prompt
- * @param onToken  Callback invoked for each streamed token fragment
- * @param tools    Optional tool definitions to pass to the LLM
+ * @param config     LLM configuration (provider, model, apiUrl, …)
+ * @param messages   Conversation history including the system prompt
+ * @param onToken    Callback invoked for each streamed token fragment
+ * @param tools      Optional tool definitions to pass to the LLM
+ * @param onThinking Optional callback for chain-of-thought tokens
  */
 export async function streamLLMResponse(
   config: ILLMConfig,
   messages: ChatMessage[],
   onToken: (token: string) => Promise<void>,
   tools?: OllamaToolDefinition[],
+  onThinking?: (token: string) => Promise<void>,
 ): Promise<LLMResult> {
   const provider = getProvider(config);
   log.debug({ provider: config.provider, model: config.model }, 'Routing to LLM provider');
-  return provider.stream(config, messages, onToken, tools);
+  return provider.stream(config, messages, onToken, tools, onThinking);
 }

@@ -35,7 +35,9 @@ self.addEventListener('fetch', (event) => {
   // Network-first for navigation (SPA), cache-first for assets
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/'))
+      fetch(request).catch(() =>
+        caches.match('/').then((cached) => cached || fetch(request))
+      )
     );
   } else {
     event.respondWith(

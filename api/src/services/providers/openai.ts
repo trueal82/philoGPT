@@ -15,6 +15,7 @@ class OpenAIProvider implements ILLMProvider {
     _messages: ChatMessage[],
     _onToken: (token: string) => Promise<void>,
     _tools?: OllamaToolDefinition[],
+    _onThinking?: (token: string) => Promise<void>,
   ): Promise<LLMResult> {
     throw new Error(
       'OpenAI provider is not yet implemented. Configure an Ollama LLM config to use this application.',

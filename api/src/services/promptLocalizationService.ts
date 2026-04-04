@@ -123,24 +123,33 @@ export function resolveSystemPromptContent(
 }
 
 /**
- * Build the full system message for the LLM, combining localized prompt,
- * personality, and language lock instruction.
+ * Variables injected into the global system prompt template.
+ * Each key corresponds to a {{PLACEHOLDER}} token in the template string.
+ * All values are strings; empty string renders as nothing in the template.
  */
-export function buildSystemMessage(
-  resolved: ResolvedBotLocale,
-  lockedLanguageCode: string,
-): string {
-  const parts: string[] = [];
-
-  if (resolved.personality) {
-    parts.push(`Personality: ${resolved.personality}`);
-  }
-
-  parts.push(resolved.systemPrompt);
-
-  parts.push(
-    `You MUST respond in the language identified by code "${lockedLanguageCode}". Do not switch languages unless explicitly asked by the user to translate something.`,
-  );
-
-  return parts.join('\n\n');
+export interface PromptVars {
+  /** Current counseling plan summary, or a sentinel "no plan" message. */
+  COUNSELING_PLAN: string;
+  /** Bullet-list of known client_memory keys for this user+bot. */
+  MEMORY_KEY_INDEX: string;
+  /** Bot persona name (e.g. "Socrates"). */
+  BOT_NAME: string;
+  /** Bot personality description. */
+  BOT_PERSONALITY: string;
+  /** Per-bot system prompt with persona instructions. */
+  BOT_SYSTEM_PROMPT: string;
+  /** BCP-47 language code the model must respond in (e.g. "en-us"). */
+  LANGUAGE_CODE: string;
 }
+
+/**
+ * Render a system prompt template by replacing all {{KEY}} tokens with the
+ * corresponding value from vars. Unknown tokens are replaced with an empty
+ * string. This function is pure — it never throws and has no side effects.
+ */
+export function renderSystemPrompt(template: string, vars: Partial<PromptVars>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key as keyof PromptVars] ?? '');
+}
+
+
+

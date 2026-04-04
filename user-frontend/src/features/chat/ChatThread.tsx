@@ -6,6 +6,7 @@ import * as api from '@/shared/api/endpoints';
 import { connectSocket, getSocket } from '@/shared/api/socket';
 import { showToast } from '@/shared/stores/toastStore';
 import MessageBubble from './MessageBubble';
+import ThinkingBox from './ThinkingBox';
 import ChatInput from './ChatInput';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,6 +25,8 @@ export default function ChatThread({ sessionId }: Props) {
   const pendingMessageRef = useRef<{ sessionId: string; content: string } | null>(null);
   const isRetryingRef = useRef(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [thinkingContent, setThinkingContent] = useState('');
+  const [thinkingDone, setThinkingDone] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
 
@@ -43,7 +46,7 @@ export default function ChatThread({ sessionId }: Props) {
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages.length, streamingContent, isWaiting]);
+  }, [messages.length, streamingContent, thinkingContent, isWaiting]);
 
   // Socket event handlers
   useEffect(() => {
@@ -66,13 +69,23 @@ export default function ChatThread({ sessionId }: Props) {
       setStreamingContent((prev) => prev + payload.token);
     };
 
-    const onDone = (payload: { sessionId: string }) => {
+    const onThinking = (payload: { sessionId: string; token: string }) => {
+      if (payload.sessionId !== sessionId) return;
+      setIsWaiting(false);
+      setThinkingDone(false);
+      setThinkingContent((prev) => prev + payload.token);
+    };
+
+    const onDone = (payload: { sessionId: string; metadata?: Record<string, unknown> }) => {
       if (payload.sessionId !== sessionId) return;
       pendingMessageRef.current = null;
       isRetryingRef.current = false;
       setStreamingContent('');
       setIsStreaming(false);
       setIsWaiting(false);
+      setThinkingContent('');
+      setThinkingDone(true);
+      // metadata is persisted on the Message doc; MessageBubble reads it from there
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
     };
@@ -104,6 +117,7 @@ export default function ChatThread({ sessionId }: Props) {
     };
 
     socket.on('chat:token', onToken);
+    socket.on('chat:thinking', onThinking);
     socket.on('chat:done', onDone);
     socket.on('chat:error', onError);
     socket.on('connect', onConnect);
@@ -112,6 +126,7 @@ export default function ChatThread({ sessionId }: Props) {
 
     return () => {
       socket.off('chat:token', onToken);
+      socket.off('chat:thinking', onThinking);
       socket.off('chat:done', onDone);
       socket.off('chat:error', onError);
       socket.off('connect', onConnect);
@@ -125,6 +140,9 @@ export default function ChatThread({ sessionId }: Props) {
       const socket = getSocket();
       pendingMessageRef.current = { sessionId, content };
       setIsWaiting(true);
+      setThinkingContent('');
+      setThinkingDone(false);
+
 
       // Optimistic user message
       const optimistic: MessageType = {
@@ -164,6 +182,11 @@ export default function ChatThread({ sessionId }: Props) {
         {messages.map((m) => (
           <MessageBubble key={m._id} message={m} />
         ))}
+        {thinkingContent && (
+          <div className="message message-assistant">
+            <ThinkingBox content={thinkingContent} done={thinkingDone} />
+          </div>
+        )}
         {isStreaming && streamingContent && (
           <div className="message message-assistant">
             <div className="message-content streaming">
