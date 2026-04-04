@@ -86,6 +86,98 @@ Seeding is owned by the API startup flow:
 
 After a purge run, set `PURGE_AND_RESEED=false` again.
 
+### Versioned seed patches
+
+Every startup the API runs a seed-version check:
+
+1. If no `SeedVersion` record exists (fresh DB, or existing DB upgrading to the versioned system), the current baseline (`v1.0`) is stamped automatically — no data is touched.
+2. Any patches registered in `api/src/scripts/seedPatches.ts` that have an `apply()` function and are not yet recorded are applied in version order, then stamped.
+
+This means **seed migrations run automatically on startup** as long as the new image is deployed — no manual database intervention is needed for typical updates.
+
+The applied versions are visible in the admin panel under **Maintenance → Seed Versions**.
+
+---
+
+## Updating a Deployed Instance
+
+This describes the standard update workflow when running under Docker Compose.
+
+### Standard update (no destructive data change)
+
+Pull the new code and redeploy. The API will apply any pending seed patches on startup.
+
+```bash
+git pull
+docker compose build
+docker compose up -d
+```
+
+The API container restarts, connects to the existing MongoDB data, stamps any missing seed-version entries, and applies pending patches. **No data is lost.**
+
+Verify the update completed cleanly:
+
+```bash
+docker compose logs api --tail=60
+```
+
+Look for a line like:
+```
+INFO  Seed versioning check complete  current="1.1" applied=["1.0","1.1"]
+```
+
+### Updating environment variables only
+
+If you only changed values in `.env` (e.g. `LOG_LEVEL`, `LLM_LOG_TTL_DAYS`, URLs):
+
+```bash
+docker compose up -d --force-recreate
+```
+
+No rebuild is needed; Compose re-reads the env file when containers restart.
+
+### Forcing a full reseed (destructive)
+
+Only use this if you want to **wipe all app data** and start fresh (e.g. development/staging reset):
+
+1. Set in `.env`:
+   ```
+   PURGE_AND_RESEED=true
+   ```
+2. Restart the API:
+   ```bash
+   docker compose up -d api
+   ```
+3. Once the logs confirm seeding completed, **immediately** set it back:
+   ```
+   PURGE_AND_RESEED=false
+   ```
+4. Restart again to clear the flag:
+   ```bash
+   docker compose up -d api
+   ```
+
+> **Warning:** `PURGE_AND_RESEED=true` drops all app collections including users, sessions, memories, and logs. Never leave it set in production.
+
+### Adding a seed patch (for developers)
+
+When a new version needs a data migration:
+
+1. Add an entry to `SEED_PATCHES` in `api/src/scripts/seedPatches.ts`:
+   ```ts
+   {
+     version: '1.1',
+     description: 'Short description of what changed',
+     apply: async () => {
+       // migration logic here — runs exactly once per database
+     },
+   }
+   ```
+2. Update `CURRENT_VERSION` in the same file to `'1.1'`.
+3. Deploy as a standard update (`docker compose build && docker compose up -d`). The patch runs automatically on the next startup.
+
+Patches without an `apply()` are baseline markers only (no code runs). Patches are applied in array order; do not reorder or remove existing entries.
+
 ## Local Development (Without Docker)
 
 Run services in separate terminals from repo root:
