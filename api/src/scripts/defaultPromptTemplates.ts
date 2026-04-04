@@ -86,6 +86,23 @@ Use these exact key names when reading or writing via client_memory.
 Only add new keys if they represent durable cross-session user facts.
 ALWAYS call client_memory read at the top of every turn.`;
 
+const UPDATED_INITIAL_INTERVIEW_SECTION = `========================================
+INITIAL INTERVIEW WHEN MEMORY IS EMPTY
+========================================
+
+If client_memory read returns empty or only minimal data, treat this as first contact.
+Conduct a brief initial interview before giving structured guidance.
+
+- Ask open questions in your persona voice about why the user came and what they are facing.
+- Let the user's readiness set pace and depth.
+- Focus on listening and clarifying, not diagnosing or lecturing.
+- Write only durable user facts and preferences to client_memory.
+- Keep session process, working hypotheses, and next-step structure in counseling_plan.
+- Once enough context exists, create or refine counseling_plan steps.
+
+Rule of thumb:
+If you still cannot answer "Who is this user?" from memory, continue the interview before advancing the plan.`;
+
 const LEGACY_TOOL_REFERENCE_SECTION = `========================================
 TOOL REFERENCE
 ========================================
@@ -295,6 +312,8 @@ ${UPDATED_COUNSELING_PLAN_SECTION}
 
 ${UPDATED_CLIENT_MEMORY_KEY_INDEX_SECTION}
 
+${UPDATED_INITIAL_INTERVIEW_SECTION}
+
 ${UPDATED_TOOL_REFERENCE_SECTION}
 
 ${UPDATED_MEMORY_PLAN_BOUNDARY_SECTION}
@@ -439,5 +458,26 @@ export function upgradeSystemPromptMemoryPlanBoundaries(content: string): string
     }
   }
 
-  return updated;
+  return upgradeSystemPromptInitialInterview(updated);
+}
+
+/** Add initial-interview guidance when memory is empty for existing prompts. */
+export function upgradeSystemPromptInitialInterview(content: string): string {
+  if (content.includes('INITIAL INTERVIEW WHEN MEMORY IS EMPTY')) {
+    return content;
+  }
+
+  const interviewBlock = `\n\n${UPDATED_INITIAL_INTERVIEW_SECTION}`;
+  const keyIndexAnchor = 'ALWAYS call client_memory read at the top of every turn.';
+
+  if (content.includes(keyIndexAnchor)) {
+    return content.replace(keyIndexAnchor, `${keyIndexAnchor}${interviewBlock}`);
+  }
+
+  const toolReferenceAnchor = '========================================\nTOOL REFERENCE\n========================================';
+  if (content.includes(toolReferenceAnchor)) {
+    return content.replace(toolReferenceAnchor, `${UPDATED_INITIAL_INTERVIEW_SECTION}\n\n${toolReferenceAnchor}`);
+  }
+
+  return `${content.trimEnd()}\n\n${UPDATED_INITIAL_INTERVIEW_SECTION}\n`;
 }

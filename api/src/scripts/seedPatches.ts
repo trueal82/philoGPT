@@ -16,11 +16,12 @@ import Tool from '../models/Tool';
 import {
   DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION,
   DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION,
+  upgradeSystemPromptInitialInterview,
   upgradeSystemPromptMemoryPlanBoundaries,
 } from './defaultPromptTemplates';
 
 export const BASELINE_VERSION = '1.0';
-export const CURRENT_VERSION = '1.1';
+export const CURRENT_VERSION = '1.2';
 
 export interface SeedPatch {
   version: string;
@@ -58,6 +59,41 @@ export const SEED_PATCHES: SeedPatch[] = [
         let localesChanged = false;
         for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
           const upgradedLocalizedContent = upgradeSystemPromptMemoryPlanBoundaries(localizedContent);
+          updatedLocales[languageCode] = upgradedLocalizedContent;
+          if (upgradedLocalizedContent !== localizedContent) {
+            localesChanged = true;
+          }
+        }
+
+        const update: Record<string, unknown> = {};
+        if (updatedContent !== prompt.content) {
+          update.content = updatedContent;
+        }
+        if (localesChanged) {
+          update.locales = updatedLocales;
+        }
+
+        if (Object.keys(update).length > 0) {
+          await SystemPrompt.updateOne({ _id: prompt._id }, { $set: update });
+        }
+      }
+    },
+  },
+  {
+    version: '1.2',
+    description: 'Require initial interview when user memory is empty',
+    apply: async () => {
+      const prompts = await SystemPrompt.find({}).lean();
+      for (const prompt of prompts) {
+        const updatedContent = upgradeSystemPromptInitialInterview(prompt.content);
+        const sourceLocales = prompt.locales instanceof Map
+          ? Object.fromEntries(prompt.locales)
+          : ((prompt.locales ?? {}) as Record<string, string>);
+
+        const updatedLocales: Record<string, string> = {};
+        let localesChanged = false;
+        for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
+          const upgradedLocalizedContent = upgradeSystemPromptInitialInterview(localizedContent);
           updatedLocales[languageCode] = upgradedLocalizedContent;
           if (upgradedLocalizedContent !== localizedContent) {
             localesChanged = true;
