@@ -27,9 +27,10 @@ import {
   upgradeSystemPromptThinking,
   upgradeSystemPromptWikipedia,
   upgradeSystemPromptSystem2,
+  upgradeSystemPromptLatex,
 } from './defaultPromptTemplates';
 
-export const CURRENT_VERSION = '1.6';
+export const CURRENT_VERSION = '1.7';
 
 export interface SeedPatch {
   version: string;
@@ -361,6 +362,41 @@ export const SEED_PATCHES: SeedPatch[] = [
             personality: locale.personality,
             systemPrompt: locale.systemPrompt,
           }).save();
+        }
+      }
+    },
+  },
+  {
+    version: '1.7',
+    description: 'Inject LaTeX/KaTeX math formatting instructions into all system prompts',
+    apply: async () => {
+      const prompts = await SystemPrompt.find({}).lean();
+      for (const prompt of prompts) {
+        const updatedContent = upgradeSystemPromptLatex(prompt.content);
+        const sourceLocales = prompt.locales instanceof Map
+          ? Object.fromEntries(prompt.locales)
+          : ((prompt.locales ?? {}) as Record<string, string>);
+
+        const updatedLocales: Record<string, string> = {};
+        let localesChanged = false;
+        for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
+          const upgradedLocalizedContent = upgradeSystemPromptLatex(localizedContent);
+          updatedLocales[languageCode] = upgradedLocalizedContent;
+          if (upgradedLocalizedContent !== localizedContent) {
+            localesChanged = true;
+          }
+        }
+
+        const update: Record<string, unknown> = {};
+        if (updatedContent !== prompt.content) {
+          update.content = updatedContent;
+        }
+        if (localesChanged) {
+          update.locales = updatedLocales;
+        }
+
+        if (Object.keys(update).length > 0) {
+          await SystemPrompt.updateOne({ _id: prompt._id }, { $set: update });
         }
       }
     },

@@ -413,6 +413,31 @@ Write all output with console.log(). Use top-level await for async operations.
 The return value of the final expression is also captured if no console output exists.
 Keep code concise; execution is time-limited.`;
 
+const UPDATED_LATEX_SECTION = `========================================
+MATH FORMATTING — LaTeX / KaTeX
+========================================
+
+The user interface renders LaTeX math via KaTeX.
+Whenever you write a mathematical expression, equation, or formula,
+you MUST wrap it in LaTeX delimiters:
+
+  Inline math  : $expression$       e.g. $c^2 = a^2 + b^2$
+  Display math : $$\nexpression\n$$ e.g. $$\nE = mc^2\n$$
+
+Rules:
+- Use inline ($...$) for expressions embedded in a sentence.
+- Use display ($$...$$) for standalone equations that deserve their own line.
+- NEVER write raw equations with ^ or * characters outside LaTeX syntax.
+- NEVER use plaintext fallbacks like "c^2" or "x_1" — always wrap in $...$.
+- Greek letters: $\\alpha$, $\\beta$, $\\theta$, $\\pi$, $\\infty$, etc.
+- Fractions: $\\frac{a}{b}$
+- Summation: $\\sum_{i=1}^{n} x_i$
+- Square root: $\\sqrt{x}$
+
+This applies to ALL contexts: explanations, derivations, counseling,
+poetry involving numbers, philosophical thought experiments — any time
+you bring in a number or symbol that has a mathematical meaning.`;
+
 export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `\
 ========================================
 SYSTEM PROMPT: HISTORICAL PERSONA AGENT
@@ -446,6 +471,8 @@ ${UPDATED_TOOL_REFERENCE_SECTION}
 ${UPDATED_WIKIPEDIA_SECTION}
 
 ${UPDATED_SYSTEM2_SECTION}
+
+${UPDATED_LATEX_SECTION}
 
 ${UPDATED_MEMORY_PLAN_BOUNDARY_SECTION}
 
@@ -656,7 +683,25 @@ export function upgradeSystemPromptWikipedia(content: string): string {
   return `${content.trimEnd()}\n\n${UPDATED_WIKIPEDIA_SECTION}\n`;
 }
 
-/** Add System 2 analytical computation section after the Wikipedia search section. */
+/** Add LaTeX/KaTeX math formatting instructions to existing prompts. */
+export function upgradeSystemPromptLatex(content: string): string {
+  if (content.includes('MATH FORMATTING')) return content;
+
+  // Insert right after the SYSTEM 2 section (after its last line)
+  const system2End = 'Keep code concise; execution is time-limited.';
+  if (content.includes(system2End)) {
+    return content.replace(system2End, `${system2End}\n\n${UPDATED_LATEX_SECTION}`);
+  }
+
+  // Fallback: insert before MEMORY VS COUNSELING PLAN
+  const memoryAnchor = '========================================\nMEMORY VS COUNSELING PLAN\n========================================';
+  if (content.includes(memoryAnchor)) {
+    return content.replace(memoryAnchor, `${UPDATED_LATEX_SECTION}\n\n${memoryAnchor}`);
+  }
+
+  // Final fallback: append
+  return `${content.trimEnd()}\n\n${UPDATED_LATEX_SECTION}\n`;
+}
 export function upgradeSystemPromptSystem2(content: string): string {
   if (content.includes('SYSTEM 2')) return content;
 
