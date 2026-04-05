@@ -13,8 +13,9 @@ import {
   BulkDeleteButton,
   useRecordContext,
 } from 'react-admin';
-import { Chip, Typography } from '@mui/material';
+import { Chip, Typography, Button, Collapse } from '@mui/material';
 import Box from '@mui/material/Box';
+import { useState } from 'react';
 
 function formatAny(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -62,6 +63,28 @@ export function LLMLogList() {
   );
 }
 
+function ExpandableContent({ content }: { content: string }) {
+  const PREVIEW_LENGTH = 500;
+  const [expanded, setExpanded] = useState(false);
+  const needsExpansion = content.length > PREVIEW_LENGTH;
+
+  return (
+    <Box>
+      <Collapse in={expanded} collapsedSize="auto">
+        <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
+          {expanded ? content : content.slice(0, PREVIEW_LENGTH)}
+          {!expanded && needsExpansion ? '…' : ''}
+        </pre>
+      </Collapse>
+      {needsExpansion && (
+        <Button size="small" onClick={() => setExpanded((v) => !v)} sx={{ mt: 0.5, p: 0, minWidth: 0 }}>
+          {expanded ? 'Show less' : `Show all (${content.length.toLocaleString()} chars)`}
+        </Button>
+      )}
+    </Box>
+  );
+}
+
 function RequestMessagesField() {
   const record = useRecordContext();
   if (!record?.requestMessages?.length) return <Typography variant="body2">No messages</Typography>;
@@ -78,10 +101,10 @@ function RequestMessagesField() {
           }}>
             {msg.role}
           </Typography>
-          <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-            {typeof msg.content === 'string' ? msg.content.slice(0, 2000) : formatAny(msg.content)}
-            {typeof msg.content === 'string' && msg.content.length > 2000 ? '\n... (truncated)' : ''}
-          </pre>
+          {typeof msg.content === 'string'
+            ? <ExpandableContent content={msg.content} />
+            : <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>{formatAny(msg.content)}</pre>
+          }
           {msg.tool_calls && (
             <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: '0.8rem', color: '#888' }}>
               tool_calls: {formatAny(msg.tool_calls)}

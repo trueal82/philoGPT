@@ -6,6 +6,8 @@ export interface IChatSession extends Document {
   botId: Types.ObjectId;
   title?: string;
   lockedLanguageCode: string;
+  /** Wikipedia summary for the bot's character, fetched at session creation. */
+  characterBackground?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,11 @@ const chatSessionSchema = new Schema<IChatSession>(
       lowercase: true,
       trim: true,
       maxlength: 10,
+    },
+    characterBackground: {
+      type: String,
+      trim: true,
+      maxlength: 8000,
     },
   },
   { timestamps: true },

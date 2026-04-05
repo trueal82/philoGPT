@@ -189,6 +189,33 @@ async function handleChatSend(
       }
     }
 
+    // --- On first message: lazily fetch Wikipedia character background via the tool ---
+    // Uses the same executeTool('wikipedia') pipeline as regular tool calls,
+    // including search fallback. Stored on the session so it is only fetched once.
+    let characterBackground = (session as any).characterBackground as string | undefined;
+    if (!characterBackground && history.length === 1) {
+      try {
+        const wikiResult = await executeTool(
+          'wikipedia',
+          { query: resolved.name },
+          { language: 'en' },
+          { userId: userIdStr, botId: botIdStr, sessionId },
+        );
+        if (
+          wikiResult &&
+          !wikiResult.startsWith('Tool "') &&
+          !wikiResult.startsWith('No Wikipedia') &&
+          !wikiResult.startsWith('Wikipedia lookup failed')
+        ) {
+          characterBackground = wikiResult;
+          await ChatSession.findByIdAndUpdate(sessionId, { characterBackground });
+          socketLog.info({ botName: resolved.name }, 'Character background fetched and stored');
+        }
+      } catch (bgErr) {
+        socketLog.warn({ bgErr }, 'Character background fetch failed — continuing without');
+      }
+    }
+
     // --- Assemble system message (global prompt + bot locale + memory keys) ---
     const systemMessage = await buildFullSystemMessage(
       resolved,
@@ -197,6 +224,7 @@ async function handleChatSend(
       botIdStr,
       sessionId,
       socketLog,
+      characterBackground,
     );
 
     // --- Map history to LLM-compatible messages ---
@@ -270,6 +298,7 @@ async function buildFullSystemMessage(
   botId: string,
   sessionId: string,
   socketLog: Logger,
+  characterBackground?: string,
 ): Promise<string> {
   const globalPrompt = await SystemPrompt.findOne({ isActive: true }).lean();
   const template = globalPrompt ? resolveSystemPromptContent(globalPrompt as any, lockedLang) : '';
@@ -304,7 +333,15 @@ async function buildFullSystemMessage(
     LANGUAGE_CODE: lockedLang || 'en-us',
   };
 
-  return renderSystemPrompt(template, vars);
+  let systemMessage = renderSystemPrompt(template, vars);
+
+  // Append Wikipedia character background when present — injected at session
+  // creation, it grounds the bot in factual knowledge about their character.
+  if (characterBackground?.trim()) {
+    systemMessage += `\n\n---\nCHARACTER BACKGROUND (Wikipedia):\n${characterBackground.trim()}\n---`;
+  }
+
+  return systemMessage;
 }
 
 /**
