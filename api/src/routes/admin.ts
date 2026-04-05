@@ -944,7 +944,7 @@ router.delete('/sessions/:id', authenticateToken, requireAdmin, async (req: Requ
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
-const VALID_TOOL_TYPES = ['wikipedia', 'client_memory', 'counseling_plan'] as const;
+const VALID_TOOL_TYPES = ['wikipedia', 'client_memory', 'counseling_plan', 'system2'] as const;
 
 router.get('/tools', authenticateToken, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -991,6 +991,7 @@ router.post('/tools', authenticateToken, requireAdmin, async (req: Request, res:
     if (config && typeof config === 'object' && !Array.isArray(config)) {
       if (typeof config.maxResults === 'number') sanitizedConfig.maxResults = Math.min(10, Math.max(1, config.maxResults));
       if (typeof config.language === 'string') sanitizedConfig.language = config.language.slice(0, 10);
+      if (typeof config.timeoutMs === 'number') sanitizedConfig.timeoutMs = Math.min(30000, Math.max(1000, config.timeoutMs));
     }
     const tool = new Tool({ name, displayName, description, type, enabled: !!enabled, config: sanitizedConfig });
     await tool.save();
@@ -1029,6 +1030,7 @@ router.put('/tools/:id', authenticateToken, requireAdmin, async (req: Request, r
       const sanitizedConfig: Record<string, unknown> = {};
       if (typeof config.maxResults === 'number') sanitizedConfig.maxResults = Math.min(10, Math.max(1, config.maxResults));
       if (typeof config.language === 'string') sanitizedConfig.language = config.language.slice(0, 10);
+      if (typeof config.timeoutMs === 'number') sanitizedConfig.timeoutMs = Math.min(30000, Math.max(1000, config.timeoutMs));
       update.config = sanitizedConfig;
     }
     const tool = await Tool.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });

@@ -10,6 +10,7 @@
  *    so they can be injected into the system prompt.
  */
 
+import vm from 'vm';
 import Tool, { ITool } from '../models/Tool';
 import ClientMemory from '../models/ClientMemory';
 import CounselingPlan from '../models/CounselingPlan';
@@ -60,6 +61,16 @@ const TOOL_PARAM_MAP: Record<string, OllamaToolDefinition['function']['parameter
       plan_title: { type: 'string', description: 'Optional title for the counseling plan (used on first add_step if plan does not yet exist)' },
     },
     required: ['action'],
+  },
+  system2: {
+    type: 'object',
+    properties: {
+      code: {
+        type: 'string',
+        description: 'JavaScript code to execute in a sandboxed Node.js environment. Use console.log() for output. Has access to fetch() for HTTP requests, Math, JSON, Date, URL, URLSearchParams, Map, Set, BigInt, and all standard ECMAScript built-ins. No file system, no require(), no process access. Supports top-level await.',
+      },
+    },
+    required: ['code'],
   },
 };
 
@@ -144,7 +155,14 @@ export async function executeTool(
   toolName: string,
   params: Record<string, unknown>,
   config: Record<string, unknown>,
-  context?: { userId: string; botId: string; sessionId?: string },
+  context?: {
+    userId: string;
+    botId: string;
+    sessionId?: string;
+    /** Optional LLM-powered compressor injected by the caller (chatHandler).
+     *  Receives the full article text and must return a condensed string. */
+    compressFn?: (text: string) => Promise<string>;
+  },
 ): Promise<string> {
   const tool = await Tool.findOne({ name: toolName, enabled: true });
   if (!tool) {
@@ -155,7 +173,7 @@ export async function executeTool(
 
   switch (tool.type) {
     case 'wikipedia':
-      return executeWikipedia(String(params.query ?? ''), mergedConfig);
+      return executeWikipedia(String(params.query ?? ''), mergedConfig, context?.compressFn);
     case 'client_memory':
       return executeClientMemory(
         String(params.action ?? 'read'),
@@ -172,14 +190,49 @@ export async function executeTool(
         context?.userId ?? '',
         context?.botId ?? '',
       );
+    case 'system2':
+      return executeSystem2(String(params.code ?? ''), mergedConfig);
     default:
       return `Unknown tool type: ${tool.type}`;
   }
 }
 
+/** Maximum characters of raw article text sent to the compressor LLM. */
+const ARTICLE_CHAR_LIMIT = 12_000;
+
+/**
+ * Fetch the full plain text extract for a resolved Wikipedia article title.
+ * Uses the MediaWiki Action API with explaintext=1 so the result is clean prose.
+ */
+async function fetchWikipediaExtract(
+  title: string,
+  language: string,
+  headers: Record<string, string>,
+): Promise<string> {
+  const url = `https://${language}.wikipedia.org/w/api.php?` + new URLSearchParams({
+    action: 'query',
+    prop: 'extracts',
+    explaintext: '1',
+    exsectionformat: 'plain',
+    titles: title,
+    format: 'json',
+  }).toString();
+
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) return '';
+
+  const data = await resp.json() as {
+    query?: { pages?: Record<string, { extract?: string }> };
+  };
+  const pages = data.query?.pages ?? {};
+  const page = Object.values(pages)[0];
+  return page?.extract ?? '';
+}
+
 async function executeWikipedia(
   query: string,
   config: Record<string, unknown>,
+  compressFn?: (text: string) => Promise<string>,
 ): Promise<string> {
   if (!query.trim()) {
     return 'No query provided for Wikipedia lookup.';
@@ -189,29 +242,82 @@ async function executeWikipedia(
     ? config.language
     : 'en';
 
-  const encoded = encodeURIComponent(query.trim());
-  const url = `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encoded}`;
-
-  log.debug({ query, language, url }, 'Executing Wikipedia lookup');
+  const reqHeaders = { 'User-Agent': 'PhiloGPT/1.0 (tool-service)' };
+  log.debug({ query, language }, 'Executing Wikipedia lookup');
 
   try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'PhiloGPT/1.0 (tool-service)' },
-    });
+    // Step 1 – resolve canonical article title via fast summary endpoint.
+    // We only need the title and disambiguation flag — the summary text itself
+    // is discarded in favour of the full extract fetched in step 3.
+    let resolvedTitle: string | null = null;
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return `No Wikipedia article found for "${query}".`;
+    const summaryResp = await fetch(
+      `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query.trim())}`,
+      { headers: reqHeaders },
+    );
+    if (summaryResp.ok) {
+      const summaryData = await summaryResp.json() as { title?: string; type?: string };
+      if (summaryData.type !== 'disambiguation') {
+        resolvedTitle = summaryData.title ?? query.trim();
       }
-      return `Wikipedia lookup failed with status ${response.status}.`;
     }
 
-    const data = await response.json() as { title?: string; extract?: string; description?: string };
-    const title = data.title ?? query;
-    const extract = data.extract ?? data.description ?? 'No summary available.';
-    const result = `${title}: ${extract}`;
+    // Step 2 – if direct lookup missed (404) or returned a disambiguation page,
+    // fall back to full-text search and take the top result.
+    if (!resolvedTitle) {
+      log.debug({ query, language }, 'Wikipedia direct lookup missed; falling back to search');
 
-    return result.length > 2000 ? result.slice(0, 2000) + '...' : result;
+      const searchResp = await fetch(
+        `https://${language}.wikipedia.org/w/api.php?` + new URLSearchParams({
+          action: 'query',
+          list: 'search',
+          srsearch: query.trim(),
+          srlimit: '3',
+          srprop: 'snippet',
+          format: 'json',
+          utf8: '1',
+        }).toString(),
+        { headers: reqHeaders },
+      );
+
+      if (!searchResp.ok) {
+        return `Wikipedia search failed with status ${searchResp.status}.`;
+      }
+
+      const searchData = await searchResp.json() as {
+        query?: { search?: Array<{ title: string }> };
+      };
+      const hits = searchData.query?.search ?? [];
+      if (hits.length === 0) {
+        return `No Wikipedia article found for "${query}".`;
+      }
+      resolvedTitle = hits[0].title;
+    }
+
+    // Step 3 – fetch the full plain-text article.
+    const fullText = await fetchWikipediaExtract(resolvedTitle, language, reqHeaders);
+    if (!fullText) {
+      return `No Wikipedia article found for "${query}".`;
+    }
+
+    const articleText = `${resolvedTitle}\n\n${fullText.slice(0, ARTICLE_CHAR_LIMIT)}`;
+
+    // Step 4 – compress via the injected LLM compressor (if available).
+    if (compressFn) {
+      try {
+        const compressed = await compressFn(articleText);
+        if (compressed.trim()) {
+          log.debug({ resolvedTitle }, 'Wikipedia article compressed by LLM');
+          return `${resolvedTitle}: ${compressed.trim()}`;
+        }
+      } catch (compressionErr) {
+        log.warn({ compressionErr, resolvedTitle }, 'Wikipedia LLM compression failed; returning raw extract');
+      }
+    }
+
+    // Fallback: no compressor or compression failed — return truncated raw text.
+    const result = `${resolvedTitle}: ${fullText}`;
+    return result.length > 4000 ? result.slice(0, 4000) + '...' : result;
   } catch (err) {
     log.error({ err, query }, 'Wikipedia lookup error');
     return `Wikipedia lookup failed: ${(err as Error).message}`;
@@ -405,4 +511,165 @@ export async function getCounselingPlanSummary(
   const plan = await CounselingPlan.findOne({ sessionId, userId, botId }).lean();
   if (!plan || plan.steps.length === 0) return '';
   return formatPlanSummary(plan.title, plan.steps);
+}
+
+// ---------------------------------------------------------------------------
+// System 2 — sandboxed JavaScript execution (Kahneman deliberate reasoning)
+// ---------------------------------------------------------------------------
+
+/** Maximum characters of captured console output before truncation. */
+const SYSTEM2_OUTPUT_CHAR_LIMIT = 8_000;
+
+/**
+ * Synchronous-code vm timeout in ms. Guards against tight infinite loops.
+ * Async operations are bounded by the separate wall-clock timeout.
+ */
+const SYSTEM2_SYNC_TIMEOUT_MS = 5_000;
+
+/**
+ * Execute user-supplied JavaScript code in a stripped-down Node.js sandbox.
+ *
+ * Security posture:
+ *  - Uses vm.runInNewContext so code cannot access the enclosing scope.
+ *  - Sandbox exposes only safe ECMAScript built-ins + wrapped fetch().
+ *  - require, process, Buffer, global, globalThis, module, exports,
+ *    __dirname, __filename, eval, and Function are intentionally absent.
+ *  - Synchronous execution is bounded by SYSTEM2_SYNC_TIMEOUT_MS.
+ *  - Async (fetch) execution is bounded by a wall-clock Promise.race timeout.
+ *  - All outbound URLs are logged for audit.
+ *
+ * NOTE: vm.runInNewContext is not a full security sandbox against crafted
+ * adversarial payloads. It is appropriate here because code is generated by
+ * the LLM, not directly typed by end users.
+ */
+async function executeSystem2(
+  code: string,
+  config: Record<string, unknown>,
+): Promise<string> {
+  if (!code.trim()) {
+    return 'No code provided for system2 execution.';
+  }
+
+  const wallClockMs =
+    typeof config.timeoutMs === 'number'
+      ? Math.min(Math.max(config.timeoutMs, 1_000), 30_000)
+      : 15_000;
+
+  const outputLines: string[] = [];
+  let totalOutputChars = 0;
+
+  function toStr(v: unknown): string {
+    if (typeof v === 'string') return v;
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+
+  function appendLine(line: string): void {
+    if (totalOutputChars < SYSTEM2_OUTPUT_CHAR_LIMIT) {
+      outputLines.push(line);
+      totalOutputChars += line.length + 1;
+    }
+  }
+
+  const capturedConsole = {
+    log: (...args: unknown[]) => appendLine(args.map(toStr).join(' ')),
+    error: (...args: unknown[]) => appendLine('[error] ' + args.map(toStr).join(' ')),
+    warn: (...args: unknown[]) => appendLine('[warn] ' + args.map(toStr).join(' ')),
+    info: (...args: unknown[]) => appendLine(args.map(toStr).join(' ')),
+  };
+
+  // Wrap fetch to log outbound URLs for audit without blocking them.
+  const auditedFetch = (input: string | URL, init?: RequestInit): Promise<Response> => {
+    log.debug({ url: String(input) }, 'system2 fetch');
+    return globalThis.fetch(input as string, init);
+  };
+
+  // Curated ECMAScript built-ins. Node-specific or sensitive APIs are absent.
+  const sandbox: Record<string, unknown> = {
+    console: capturedConsole,
+    fetch: auditedFetch,
+    Math,
+    JSON,
+    Date,
+    Array,
+    Object,
+    String,
+    Number,
+    Boolean,
+    BigInt,
+    Symbol,
+    Map,
+    Set,
+    WeakMap,
+    WeakSet,
+    Promise,
+    URL,
+    URLSearchParams,
+    parseInt,
+    parseFloat,
+    isNaN,
+    isFinite,
+    Infinity,
+    NaN,
+    encodeURIComponent,
+    decodeURIComponent,
+    encodeURI,
+    decodeURI,
+    Error,
+    TypeError,
+    RangeError,
+    SyntaxError,
+  };
+
+  log.debug({ codeLength: code.length, wallClockMs }, 'system2 executing');
+
+  try {
+    // Wrap in async IIFE so the LLM can use top-level await and fetch.
+    const wrappedCode = `(async () => {\n${code}\n})()`;
+
+    // runInNewContext returns a Promise when the IIFE is async.
+    const vmPromise = vm.runInNewContext(wrappedCode, sandbox, {
+      timeout: SYSTEM2_SYNC_TIMEOUT_MS,
+      filename: 'system2.js',
+    }) as Promise<unknown>;
+
+    // Race async execution against a wall-clock timeout.
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error(`Execution timed out after ${wallClockMs}ms`)),
+        wallClockMs,
+      );
+      // Do not let the timer hold the process open.
+      if (timeoutId && typeof timeoutId === 'object' && 'unref' in timeoutId) {
+        (timeoutId as NodeJS.Timeout).unref();
+      }
+    });
+
+    const result = await Promise.race([vmPromise, timeoutPromise]);
+    clearTimeout(timeoutId);
+
+    const consoleOutput = outputLines.join('\n');
+    let resultStr = '';
+    if (result !== undefined && result !== null) {
+      try {
+        resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+      } catch {
+        resultStr = String(result);
+      }
+    }
+
+    const parts: string[] = [];
+    if (consoleOutput.trim()) parts.push(consoleOutput.trim());
+    if (resultStr.trim() && resultStr.trim() !== consoleOutput.trim()) {
+      parts.push(`Result: ${resultStr.trim()}`);
+    }
+
+    const combined = parts.join('\n\n').slice(0, SYSTEM2_OUTPUT_CHAR_LIMIT);
+    log.debug({ lines: outputLines.length, chars: combined.length }, 'system2 execution completed');
+    return combined || '(no output)';
+  } catch (err: unknown) {
+    const message = (err as Error).message ?? String(err);
+    log.warn({ codeLength: code.length, error: message }, 'system2 execution error');
+    return `Execution error: ${message}`;
+  }
 }

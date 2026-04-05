@@ -4,6 +4,10 @@ export const DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION = 'Your persistent memory fo
 
 export const DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION = 'Manage the structured counseling process for the current session. Use "read" to see the current plan and all steps. Use "add_step" to add a new counseling step or phase when you identify a therapeutic goal. Use "update_step_status" to mark steps as in_progress or completed and to record evidence, breakthroughs, resistance, or the next focus. Keep step titles short and human-readable because the user sees the plan. Call this tool every turn to keep the process current.';
 
+export const DEFAULT_WIKIPEDIA_TOOL_DESCRIPTION = 'Search Wikipedia for factual information. Accepts natural-language queries -- you do not need to know the exact article title. Use for verifying facts, grounding claims, and looking up philosophers, doctrines, events, concepts, historical figures, and any topic that benefits from authoritative reference. Query with concept-focused terms rather than verbatim user phrases.';
+
+export const DEFAULT_SYSTEM2_TOOL_DESCRIPTION = 'Use for deliberate, step-by-step analytical reasoning — Kahneman\'s System 2 thinking. Execute JavaScript to perform calculations, date/time arithmetic, statistical analysis, data transformations, string parsing, and fetch external web content via fetch(url). Write output with console.log(). Supports top-level await. Call this whenever a problem requires precise computation or live real-time data that Wikipedia or memory cannot reliably provide.';
+
 const LEGACY_MANDATORY_TURN_PROTOCOL = `========================================
 MANDATORY TURN PROTOCOL
 ========================================
@@ -135,6 +139,7 @@ Tools available to you:
   wikipedia        -- factual knowledge retrieval
   client_memory    -- durable cross-session user memory
   counseling_plan  -- session/process plan visible to the user
+  system2          -- deliberate computation, calculations, and live web data
 
 MUST call wikipedia whenever:
   - the user asks about people, places, history, science, or concepts
@@ -333,6 +338,81 @@ Rules:
 - Step titles MUST reflect your persona's language and method.
 - The user sees the plan -- keep titles human-readable and meaningful.`;
 
+const UPDATED_WIKIPEDIA_SECTION = `========================================
+WIKIPEDIA SEARCH
+========================================
+
+The wikipedia tool supports natural-language concept queries.
+You do NOT need to know the exact article title -- the tool searches Wikipedia
+and returns the best-matching article summary.
+
+Form queries as focused topic terms, not verbatim user phrases:
+
+  Good: "Stoic self-discipline Marcus Aurelius virtue"
+  Good: "Buddhist anicca impermanence suffering"
+  Good: "Socratic elenchus method of questioning"
+  Good: "Freudian ego defense mechanisms psychoanalysis"
+  Bad:  "why do I feel empty?" (user words, not a searchable topic)
+  Bad:  "what should I do with my life?" (emotional question, not a concept)
+
+Use wikipedia proactively whenever:
+  - a concept, person, doctrine, or historical event arises that belongs to your tradition
+  - the user references a school of thought, movement, or practice
+  - you make a factual claim that benefits from authoritative grounding
+  - you want to root your counseling in real, verified knowledge
+
+A counselor grounded in real knowledge carries greater authority.
+Do not guess facts you can verify. Do not summarize from memory alone.
+Your tradition deserves accurate, properly sourced context.`;
+
+const UPDATED_SYSTEM2_SECTION = `========================================
+SYSTEM 2 — ANALYTICAL COMPUTATION
+========================================
+
+system2 is your deliberate analytical mind — Kahneman's System 2: slow,
+effortful, and precise. When intuitive reasoning is insufficient for a problem,
+engage System 2 to compute the answer correctly.
+
+Call system2 for:
+  - Mathematical calculations (compound interest, statistics, geometry, physics)
+  - Date and time arithmetic ("how many days between X and Y", "what weekday is ...")
+  - Fetching live external data via fetch(url) -- web content, JSON APIs, current events
+  - Sorting, filtering, or transforming structured data
+  - Verifying any numerical claim before stating it
+  - Parsing or reformatting text programmatically
+
+Do NOT call system2 for:
+  - Factual lookups that wikipedia covers adequately
+  - Qualitative reasoning, emotional analysis, or counseling guidance
+  - Tasks you can answer correctly and precisely from memory
+
+Available in the sandbox:
+  console.log()          -- write output (captured and returned to you)
+  fetch(url [, init])    -- HTTP requests for live web data (supports await)
+  Math, JSON, Date       -- standard built-ins
+  URL, URLSearchParams   -- URL construction and parsing
+  Array, Object, String  -- standard built-ins
+  Map, Set, BigInt       -- standard built-ins
+
+Example patterns:
+
+  // Compound interest
+  const p = 1000, r = 0.05, n = 10;
+  console.log(p * Math.pow(1 + r, n));
+
+  // Days between two dates
+  const d1 = new Date('1980-05-15'), d2 = new Date();
+  console.log(Math.floor((d2.getTime() - d1.getTime()) / 86400000) + ' days');
+
+  // Fetch live data
+  const res = await fetch('https://api.example.com/data');
+  const data = await res.json();
+  console.log(JSON.stringify(data, null, 2));
+
+Write all output with console.log(). Use top-level await for async operations.
+The return value of the final expression is also captured if no console output exists.
+Keep code concise; execution is time-limited.`;
+
 export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `\
 ========================================
 SYSTEM PROMPT: HISTORICAL PERSONA AGENT
@@ -362,6 +442,10 @@ ${UPDATED_CLIENT_MEMORY_KEY_INDEX_SECTION}
 ${UPDATED_INITIAL_INTERVIEW_SECTION}
 
 ${UPDATED_TOOL_REFERENCE_SECTION}
+
+${UPDATED_WIKIPEDIA_SECTION}
+
+${UPDATED_SYSTEM2_SECTION}
 
 ${UPDATED_MEMORY_PLAN_BOUNDARY_SECTION}
 
@@ -550,4 +634,50 @@ export function upgradeSystemPromptThinking(content: string): string {
 
   // If there's no thinking section at all, append before the closing
   return `${content.trimEnd()}\n\n${UPDATED_THINKING_SECTION}\n`;
+}
+
+/** Add Wikipedia search guidance to encourage natural-language queries and proactive use. */
+export function upgradeSystemPromptWikipedia(content: string): string {
+  if (content.includes('WIKIPEDIA SEARCH')) return content;
+
+  // Insert right after the TOOL REFERENCE section (after its last line)
+  const toolRefEnd = 'NEVER narrate a tool call. NEVER claim to use a tool you did not use.\nNEVER invent tool results.';
+  if (content.includes(toolRefEnd)) {
+    return content.replace(toolRefEnd, `${toolRefEnd}\n\n${UPDATED_WIKIPEDIA_SECTION}`);
+  }
+
+  // Fallback: insert before MEMORY VS COUNSELING PLAN
+  const memoryAnchor = '========================================\nMEMORY VS COUNSELING PLAN\n========================================';
+  if (content.includes(memoryAnchor)) {
+    return content.replace(memoryAnchor, `${UPDATED_WIKIPEDIA_SECTION}\n\n${memoryAnchor}`);
+  }
+
+  // Final fallback: append
+  return `${content.trimEnd()}\n\n${UPDATED_WIKIPEDIA_SECTION}\n`;
+}
+
+/** Add System 2 analytical computation section after the Wikipedia search section. */
+export function upgradeSystemPromptSystem2(content: string): string {
+  if (content.includes('SYSTEM 2')) return content;
+
+  // Insert right after the WIKIPEDIA SEARCH section (after its last line)
+  const wikiEnd = 'Keep code concise; execution is time-limited.';
+  // also handle prompts that have the old (shorter) wiki section ending
+  const wikiEndAlt = 'Your tradition deserves accurate, properly sourced context.';
+
+  if (content.includes(wikiEnd)) {
+    return content.replace(wikiEnd, `${wikiEnd}\n\n${UPDATED_SYSTEM2_SECTION}`);
+  }
+  if (content.includes(wikiEndAlt)) {
+    return content.replace(wikiEndAlt, `${wikiEndAlt}\n\n${UPDATED_SYSTEM2_SECTION}`);
+  }
+
+  // Fallback: insert before MEMORY VS COUNSELING PLAN
+  const memoryAnchor = '========================================\nMEMORY VS COUNSELING PLAN\n========================================';
+  if (content.includes(memoryAnchor)) {
+    return content.replace(memoryAnchor, `${UPDATED_SYSTEM2_SECTION}\n\n${memoryAnchor}`);
+  }
+
+  // Final fallback: append
+  return `${content.trimEnd()}\n\n${UPDATED_SYSTEM2_SECTION}\n`;
 }

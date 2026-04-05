@@ -16,13 +16,17 @@ import Tool from '../models/Tool';
 import {
   DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION,
   DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION,
+  DEFAULT_WIKIPEDIA_TOOL_DESCRIPTION,
+  DEFAULT_SYSTEM2_TOOL_DESCRIPTION,
   upgradeSystemPromptCounselingJourneyMap,
   upgradeSystemPromptInitialInterview,
   upgradeSystemPromptMemoryPlanBoundaries,
   upgradeSystemPromptThinking,
+  upgradeSystemPromptWikipedia,
+  upgradeSystemPromptSystem2,
 } from './defaultPromptTemplates';
 
-export const CURRENT_VERSION = '1.3';
+export const CURRENT_VERSION = '1.5';
 
 export interface SeedPatch {
   version: string;
@@ -130,6 +134,95 @@ export const SEED_PATCHES: SeedPatch[] = [
         let localesChanged = false;
         for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
           const upgradedLocalizedContent = upgradeSystemPromptCounselingJourneyMap(upgradeSystemPromptThinking(localizedContent));
+          updatedLocales[languageCode] = upgradedLocalizedContent;
+          if (upgradedLocalizedContent !== localizedContent) {
+            localesChanged = true;
+          }
+        }
+
+        const update: Record<string, unknown> = {};
+        if (updatedContent !== prompt.content) {
+          update.content = updatedContent;
+        }
+        if (localesChanged) {
+          update.locales = updatedLocales;
+        }
+
+        if (Object.keys(update).length > 0) {
+          await SystemPrompt.updateOne({ _id: prompt._id }, { $set: update });
+        }
+      }
+    },
+  },
+  {
+    version: '1.4',
+    description: 'Describe Wikipedia natural-language search in the system prompt and update tool description',
+    apply: async () => {
+      await Tool.updateOne(
+        { name: 'wikipedia' },
+        { $set: { description: DEFAULT_WIKIPEDIA_TOOL_DESCRIPTION } },
+      );
+
+      const prompts = await SystemPrompt.find({}).lean();
+      for (const prompt of prompts) {
+        const updatedContent = upgradeSystemPromptWikipedia(prompt.content);
+        const sourceLocales = prompt.locales instanceof Map
+          ? Object.fromEntries(prompt.locales)
+          : ((prompt.locales ?? {}) as Record<string, string>);
+
+        const updatedLocales: Record<string, string> = {};
+        let localesChanged = false;
+        for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
+          const upgradedLocalizedContent = upgradeSystemPromptWikipedia(localizedContent);
+          updatedLocales[languageCode] = upgradedLocalizedContent;
+          if (upgradedLocalizedContent !== localizedContent) {
+            localesChanged = true;
+          }
+        }
+
+        const update: Record<string, unknown> = {};
+        if (updatedContent !== prompt.content) {
+          update.content = updatedContent;
+        }
+        if (localesChanged) {
+          update.locales = updatedLocales;
+        }
+
+        if (Object.keys(update).length > 0) {
+          await SystemPrompt.updateOne({ _id: prompt._id }, { $set: update });
+        }
+      }
+    },
+  },
+  {
+    version: '1.5',
+    description: 'Add System 2 analytical computation tool (Kahneman deliberate reasoning) and update system prompts',
+    apply: async () => {
+      // Create the system2 tool document if it does not already exist.
+      const exists = await Tool.findOne({ name: 'system2' });
+      if (!exists) {
+        await Tool.create({
+          name: 'system2',
+          displayName: 'System 2',
+          description: DEFAULT_SYSTEM2_TOOL_DESCRIPTION,
+          type: 'system2',
+          enabled: false,
+          config: { timeoutMs: 15000 },
+        });
+      }
+
+      // Inject the SYSTEM 2 section into all existing system prompts.
+      const prompts = await SystemPrompt.find({}).lean();
+      for (const prompt of prompts) {
+        const updatedContent = upgradeSystemPromptSystem2(prompt.content);
+        const sourceLocales = prompt.locales instanceof Map
+          ? Object.fromEntries(prompt.locales)
+          : ((prompt.locales ?? {}) as Record<string, string>);
+
+        const updatedLocales: Record<string, string> = {};
+        let localesChanged = false;
+        for (const [languageCode, localizedContent] of Object.entries(sourceLocales)) {
+          const upgradedLocalizedContent = upgradeSystemPromptSystem2(localizedContent);
           updatedLocales[languageCode] = upgradedLocalizedContent;
           if (upgradedLocalizedContent !== localizedContent) {
             localesChanged = true;

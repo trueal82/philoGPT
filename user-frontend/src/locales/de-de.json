@@ -31,6 +31,7 @@
     "placeholderText": "Wähle eine Unterhaltung oder starte einen neuen Chat",
     "loadingMessages": "Nachrichten werden geladen…",
     "emptyState": "Sende eine Nachricht, um das Gespräch zu beginnen.",
+    "consultingLibrary": "Bibliothek wird durchsucht…",
     "defaultTitle": "Chat",
     "newChat": "+ Neuer Chat",
     "noConversations": "Noch keine Unterhaltungen"

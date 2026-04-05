@@ -17,6 +17,8 @@ import { APP_COLLECTIONS } from './appCollections';
 import {
   DEFAULT_CLIENT_MEMORY_TOOL_DESCRIPTION,
   DEFAULT_COUNSELING_PLAN_TOOL_DESCRIPTION,
+  DEFAULT_WIKIPEDIA_TOOL_DESCRIPTION,
+  DEFAULT_SYSTEM2_TOOL_DESCRIPTION,
   DEFAULT_GLOBAL_SYSTEM_PROMPT,
 } from './defaultPromptTemplates';
 
@@ -135,7 +137,7 @@ export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
   const wikipediaTool = new Tool({
     name: 'wikipedia',
     displayName: 'Wikipedia',
-    description: 'Look up factual information from Wikipedia. Use this when you need to verify facts, provide background on a topic, or cite a concept you are discussing.',
+    description: DEFAULT_WIKIPEDIA_TOOL_DESCRIPTION,
     type: 'wikipedia',
     enabled: true,
     config: { language: 'en' },
@@ -164,6 +166,17 @@ export async function ensureDemoDataIfDatabaseEmpty(): Promise<boolean> {
   });
   await counselingPlanTool.save();
   log.info('Created Counseling Plan tool');
+
+  const system2Tool = new Tool({
+    name: 'system2',
+    displayName: 'System 2',
+    description: DEFAULT_SYSTEM2_TOOL_DESCRIPTION,
+    type: 'system2',
+    enabled: false,  // deliberately off by default — admin must enable consciously
+    config: { timeoutMs: 15000 },
+  });
+  await system2Tool.save();
+  log.info('Created System 2 tool (disabled by default)');
 
   // ---------------------------------------------------------------------------
   // Philosopher / Psychoanalyst Bots

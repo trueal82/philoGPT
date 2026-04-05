@@ -5,7 +5,7 @@ export interface ITool extends Document {
   name: string;
   displayName: string;
   description: string;
-  type: 'wikipedia' | 'client_memory' | 'counseling_plan';
+  type: 'wikipedia' | 'client_memory' | 'counseling_plan' | 'system2';
   enabled: boolean;
   config: Record<string, unknown>;
   createdAt: Date;
@@ -20,7 +20,7 @@ const toolSchema = new Schema<ITool>(
     type: {
       type: String,
       required: true,
-      enum: ['wikipedia', 'client_memory', 'counseling_plan'],
+      enum: ['wikipedia', 'client_memory', 'counseling_plan', 'system2'],
     },
     enabled: { type: Boolean, default: false },
     config: { type: Schema.Types.Mixed, default: {} },

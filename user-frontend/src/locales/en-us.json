@@ -31,6 +31,7 @@
     "placeholderText": "Select a conversation or start a new chat",
     "loadingMessages": "Loading messages…",
     "emptyState": "Send a message to start the conversation.",
+    "consultingLibrary": "Consulting the library…",
     "defaultTitle": "Chat",
     "newChat": "+ New Chat",
     "noConversations": "No conversations yet"

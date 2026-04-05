@@ -3,14 +3,14 @@ interface Props {
   done: boolean;
 }
 
-/** Strip Gemma 4 channel control tags that may leak through. */
-const CHANNEL_TAG_RE = /thought<\|channel>|<\|channel>thought|<channel\|>|<\|channel>|<\|start_of_thinking\|>|<\|end_of_thinking\|>/g;
-function stripChannelTags(text: string): string {
-  return text.replace(CHANNEL_TAG_RE, '').trim();
+/** Strip all known Gemma 4 control tokens that may leak through. Mirrors backend GEMMA4_CONTROL_TOKEN_RE. */
+const GEMMA4_CONTROL_TOKEN_RE = /thought<\|channel>|<\|channel>thought|<\|channel>|<channel\|>|<\|start_of_thinking\|>|<\|end_of_thinking\|>|<\|think\|>|<\|turn>|<turn\|>|<\|tool_call>|<tool_call\|>|<\|tool_response>|<tool_response\|>|<\|tool>|<tool\|>|<\|"\|>|<\|image\|>|<\|image>|<image\|>|<\|audio\|>|<\|audio>|<audio\|>/g;
+function stripGemmaControlTokens(text: string): string {
+  return text.replace(GEMMA4_CONTROL_TOKEN_RE, '').trim();
 }
 
 export default function ThinkingBox({ content, done }: Props) {
-  const cleaned = stripChannelTags(content);
+  const cleaned = stripGemmaControlTokens(content);
   if (!cleaned) return null;
 
   return (

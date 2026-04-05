@@ -34,24 +34,39 @@ interface OllamaChunk {
 }
 
 // ---------------------------------------------------------------------------
-// Thought-block stripping (safety net for replayed history)
+// Gemma 4 control-token stripping
 // ---------------------------------------------------------------------------
+
+/**
+ * All known Gemma 4 control / special tokens that must never appear in
+ * user-facing content or thinking output.
+ *
+ * Covers:
+ *  - Thinking channel  : <|channel>thought, thought<|channel>, <channel|>, <|channel>,
+ *                        <|think|>, <|start_of_thinking|>, <|end_of_thinking|>
+ *  - Turn delimiters   : <|turn>, <turn|>
+ *  - Function calling  : <|tool_call>, <tool_call|>, <|tool_response>, <tool_response|>,
+ *                        <|tool>, <tool|>, <|"|> (string value delimiter)
+ *  - Multimodal        : <|image|>, <|image>, <image|>, <|audio|>, <|audio>, <audio|>
+ */
+const GEMMA4_CONTROL_TOKEN_RE = /thought<\|channel>|<\|channel>thought|<\|channel>|<channel\|>|<\|start_of_thinking\|>|<\|end_of_thinking\|>|<\|think\|>|<\|turn>|<turn\|>|<\|tool_call>|<tool_call\|>|<\|tool_response>|<tool_response\|>|<\|tool>|<tool\|>|<\|"\|>|<\|image\|>|<\|image>|<image\|>|<\|audio\|>|<\|audio>|<audio\|>/g;
 
 const THOUGHT_BLOCK_RE = /<\|channel>thought[\s\S]*?<channel\|>/g;
 
-/** Strip any residual Gemma 4 thought blocks from a string. */
+/**
+ * Strip any residual Gemma 4 thought blocks from a full string (used on replayed history).
+ * Uses .trim() because it operates on complete strings, not streaming tokens.
+ */
 export function stripThoughtBlocks(text: string): string {
   return text.replace(THOUGHT_BLOCK_RE, '').trim();
 }
 
 /**
- * Strip Gemma 4 channel control tags from thinking text.
- * These tokens sometimes leak through Ollama's `think: true` parsing.
- * NOTE: no .trim() here — called on individual stream tokens where whitespace must be preserved.
+ * Strip all Gemma 4 control tokens from a string.
+ * NOTE: no .trim() — called on individual stream tokens where whitespace must be preserved.
  */
-const CHANNEL_TAG_RE = /thought<\|channel>|<\|channel>thought|<channel\|>|<\|channel>|<\|start_of_thinking\|>|<\|end_of_thinking\|>/g;
 export function stripChannelTags(text: string): string {
-  return text.replace(CHANNEL_TAG_RE, '');
+  return text.replace(GEMMA4_CONTROL_TOKEN_RE, '');
 }
 
 class OllamaProvider implements ILLMProvider {
@@ -113,6 +128,40 @@ class OllamaProvider implements ILLMProvider {
     let thinkingText = '';     // accumulated thinking text
     let doneStats: LLMStats | undefined;
 
+    // Small lookahead buffer: holds back the tail of a content token when it
+    // looks like the start of a Gemma 4 control token split across chunks
+    // (e.g. a chunk ending with "<|tool" before the next chunk delivers "_call>").
+    // Maximum Gemma 4 control token length is 18 chars (<|tool_response|>).
+    let contentPartial = '';
+    const PARTIAL_CONTROL_RE = /<(?:\|[a-z_"]{0,16}|[a-z_]{0,16}\|?)$/i;
+
+    const processContentToken = async (rawToken: string): Promise<void> => {
+      if (!rawToken) return;
+      const combined = contentPartial + rawToken;
+      contentPartial = '';
+      const cleaned = stripChannelTags(combined);
+      if (!cleaned) return;
+      // Hold back any trailing fragment that looks like the start of a control token
+      const partialMatch = PARTIAL_CONTROL_RE.exec(cleaned);
+      if (partialMatch) {
+        const safe = cleaned.slice(0, partialMatch.index);
+        contentPartial = partialMatch[0];
+        if (safe) { fullContent += safe; await onToken(safe); }
+      } else {
+        fullContent += cleaned;
+        await onToken(cleaned);
+      }
+    };
+
+    const flushContentPartial = async (): Promise<void> => {
+      if (!contentPartial) return;
+      // At end-of-stream the held-back fragment is confirmed not to be a full
+      // control token — emit it as-is (after one final strip pass, just in case).
+      const remaining = stripChannelTags(contentPartial);
+      contentPartial = '';
+      if (remaining) { fullContent += remaining; await onToken(remaining); }
+    };
+
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
       rawBuffer += decoder.decode(chunk, { stream: true });
       const lines = rawBuffer.split('\n');
@@ -140,13 +189,8 @@ class OllamaProvider implements ILLMProvider {
           if (onThinking) await onThinking(cleaned);
         }
 
-        // Route content tokens (strip any leaked channel tags)
-        const rawToken = parsed.message?.content ?? '';
-        const token = rawToken ? stripChannelTags(rawToken) : '';
-        if (token) {
-          fullContent += token;
-          await onToken(token);
-        }
+        // Route content tokens (strip any leaked Gemma 4 control tokens)
+        await processContentToken(parsed.message?.content ?? '');
 
         // Collect tool_calls from any chunk (typically the done chunk)
         const tc = parsed.message?.tool_calls;
@@ -178,12 +222,7 @@ class OllamaProvider implements ILLMProvider {
           thinkingText += cleaned;
           if (onThinking) await onThinking(cleaned);
         }
-        const rawToken = parsed.message?.content ?? '';
-        const token = rawToken ? stripChannelTags(rawToken) : '';
-        if (token) {
-          fullContent += token;
-          await onToken(token);
-        }
+        await processContentToken(parsed.message?.content ?? '');
         const tc = parsed.message?.tool_calls;
         if (tc && tc.length > 0) {
           collectedToolCalls.push(...tc);
@@ -192,6 +231,9 @@ class OllamaProvider implements ILLMProvider {
         // ignore trailing non-JSON
       }
     }
+
+    // Flush any held-back partial control token (confirmed end-of-stream)
+    await flushContentPartial();
 
     // If tool_calls were collected, return them
     if (collectedToolCalls.length > 0) {

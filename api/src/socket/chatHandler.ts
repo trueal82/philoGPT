@@ -371,17 +371,87 @@ async function runLLMWithToolLoop(
   const resolvedBotName = typeof botName === 'string' && botName.trim().length > 0
     ? botName.trim()
     : 'Unknown Bot';
-  const emitToken = async (token: string) => {
-    socket.emit('chat:token', { sessionId, token });
-  };
   const emitThinking = async (token: string) => {
     thinkingText += token;
     socket.emit('chat:thinking', { sessionId, token });
   };
 
+  // ---------------------------------------------------------------------------
+  // emitToken: buffers up to 11 chars to detect and suppress the inline
+  // [tool_call] marker before it reaches the UI (qwen / Ollama-inline style).
+  // Once detected it emits 'chat:tool_start' so the frontend can show a
+  // "Consulting the library" indicator instead.
+  // Call resetEmitToken() before each follow-up LLM call so normal streaming
+  // resumes after tool results.
+  // ---------------------------------------------------------------------------
+  const INLINE_TOOL_MARKER = '[tool_call]';
+  let toolCallSuppressed = false;
+  let emitBuf = '';
+
+  const flushEmitBuf = () => {
+    if (emitBuf) {
+      socket.emit('chat:token', { sessionId, token: emitBuf });
+      emitBuf = '';
+    }
+  };
+
+  const resetEmitToken = () => {
+    toolCallSuppressed = false;
+    flushEmitBuf();
+  };
+
+  const emitToken = async (token: string): Promise<void> => {
+    if (toolCallSuppressed) return;
+    emitBuf += token;
+
+    const markerIdx = emitBuf.indexOf(INLINE_TOOL_MARKER);
+    if (markerIdx !== -1) {
+      // Flush anything that appeared before the marker, then suppress
+      const before = emitBuf.slice(0, markerIdx);
+      emitBuf = '';
+      toolCallSuppressed = true;
+      if (before.trim()) socket.emit('chat:token', { sessionId, token: before });
+      socket.emit('chat:tool_start', { sessionId });
+      return;
+    }
+
+    // Hold up to (marker.length - 1) trailing chars in case the marker straddles chunks;
+    // flush the rest immediately.
+    const holdLen = INLINE_TOOL_MARKER.length - 1; // 10 chars
+    if (emitBuf.length > holdLen) {
+      const toFlush = emitBuf.slice(0, emitBuf.length - holdLen);
+      emitBuf = emitBuf.slice(-holdLen);
+      socket.emit('chat:token', { sessionId, token: toFlush });
+    }
+  };
+
   let callStart = Date.now();
+  // Flush any buffered partial-marker tokens and restore state before each
+  // follow-up LLM response (called via resetEmitToken() in the tool loop).
   let result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
   writeLLMLog(sessionId, userId, botId, botName, llmConfig, 0, contextMessages, result, thinkingText, Date.now() - callStart, socketLog);
+
+  // Build a compressor function that calls the same LLM to condense a full
+  // Wikipedia article into a dense factual reference before returning it to
+  // the main conversation context. Tokens are collected silently — not emitted.
+  const compressFn = async (articleText: string): Promise<string> => {
+    const compressionMessages: ChatMessage[] = [
+      {
+        role: 'user',
+        content: `Compress the following Wikipedia article into a dense factual summary for use as a knowledge reference. Preserve key names, dates, definitions, relationships, doctrines, and core ideas. Write 4-8 paragraphs of plain prose. Output the summary only — no headings, no bullet points, no preamble.\n\n${articleText}`,
+      },
+    ];
+    let compressed = '';
+    const compressionResult = await streamLLMResponse(
+      llmConfig,
+      compressionMessages,
+      async (token) => { compressed += token; },
+    );
+    if (compressionResult.type === 'response') {
+      return compressed.trim() || compressionResult.content.trim();
+    }
+    return compressed.trim();
+  };
 
   let toolRound = 0;
   while (result.type === 'tool_calls' && toolRound < MAX_TOOL_ROUNDS) {
@@ -394,6 +464,10 @@ async function runLLMWithToolLoop(
       socketLog.debug({ toolName, toolParams }, 'Executing tool call');
       toolCallNames.push(toolName);
 
+      // Notify the frontend that a tool is running — clears any [tool_call] artefacts
+      // and shows the "Consulting the library" indicator.
+      socket.emit('chat:tool_start', { sessionId, toolName });
+
       const toolStartMs = Date.now();
       let toolResult: string;
       let toolStatus: 'success' | 'error' = 'success';
@@ -403,7 +477,7 @@ async function runLLMWithToolLoop(
           toolName,
           toolParams,
           { language: wikiLang },
-          { userId, botId, sessionId },
+          { userId, botId, sessionId, compressFn },
         );
       } catch (execErr: any) {
         toolStatus = 'error';
@@ -484,6 +558,11 @@ async function runLLMWithToolLoop(
       role: 'system',
       content: 'Tool calls have been processed. Now respond naturally to the user based on the conversation and tool results above. Do not make another tool call unless absolutely necessary.',
     });
+
+    // Reset the inline-[tool_call] suppression buffer so normal token streaming
+    // resumes for the follow-up LLM response.
+    flushEmitBuf();
+    resetEmitToken();
 
     callStart = Date.now();
     result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);

@@ -492,6 +492,13 @@ a:hover { text-decoration: underline; }
   40% { opacity: 1; transform: scale(1); }
 }
 
+.tool-running .tool-running-label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-right: 6px;
+  font-style: italic;
+}
+
 /* --- Thinking Box --- */
 
 .thinking-box {

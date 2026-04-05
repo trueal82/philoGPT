@@ -31,6 +31,7 @@ export default function ChatThread({ sessionId }: Props) {
   const [thinkingDone, setThinkingDone] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
+  const [isToolRunning, setIsToolRunning] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['messages', sessionId],
@@ -73,9 +74,24 @@ export default function ChatThread({ sessionId }: Props) {
 
     const onToken = (payload: { sessionId: string; token: string }) => {
       if (payload.sessionId !== sessionId) return;
+      // Frontend safety net: strip any Gemma 4 control tokens that leaked through
+      // the backend filter (e.g. split-chunk edge cases). Mirrors GEMMA4_CONTROL_TOKEN_RE.
+      const GEMMA4_RE = /thought<\|channel>|<\|channel>thought|<\|channel>|<channel\|>|<\|start_of_thinking\|>|<\|end_of_thinking\|>|<\|think\|>|<\|turn>|<turn\|>|<\|tool_call>|<tool_call\|>|<\|tool_response>|<tool_response\|>|<\|tool>|<tool\|>|<\|"\|>|<\|image\|>|<\|image>|<image\|>|<\|audio\|>|<\|audio>|<audio\|>/g;
+      const token = payload.token.replace(GEMMA4_RE, '');
+      if (!token) return;
+      setIsToolRunning(false);
       setIsWaiting(false);
       setIsStreaming(true);
-      setStreamingContent((prev) => prev + payload.token);
+      setStreamingContent((prev) => prev + token);
+    };
+
+    const onToolStart = (payload: { sessionId: string }) => {
+      if (payload.sessionId !== sessionId) return;
+      // Clear any [tool_call] artefacts that may have streamed and show the tool indicator
+      setStreamingContent('');
+      setIsStreaming(false);
+      setIsWaiting(false);
+      setIsToolRunning(true);
     };
 
     const onThinking = (payload: { sessionId: string; token: string }) => {
@@ -92,6 +108,7 @@ export default function ChatThread({ sessionId }: Props) {
       setStreamingContent('');
       setIsStreaming(false);
       setIsWaiting(false);
+      setIsToolRunning(false);
       setThinkingContent('');
       setThinkingDone(true);
       // metadata is persisted on the Message doc; MessageBubble reads it from there
@@ -105,6 +122,7 @@ export default function ChatThread({ sessionId }: Props) {
       setStreamingContent('');
       setIsStreaming(false);
       setIsWaiting(false);
+      setIsToolRunning(false);
       console.error('Chat error:', payload.error);
       showToast({ kind: 'error', message: payload.error || t('toast.chatFailed') }, 5000);
     };
@@ -127,6 +145,7 @@ export default function ChatThread({ sessionId }: Props) {
 
     socket.on('chat:token', onToken);
     socket.on('chat:thinking', onThinking);
+    socket.on('chat:tool_start', onToolStart);
     socket.on('chat:done', onDone);
     socket.on('chat:error', onError);
     socket.on('connect', onConnect);
@@ -136,6 +155,7 @@ export default function ChatThread({ sessionId }: Props) {
     return () => {
       socket.off('chat:token', onToken);
       socket.off('chat:thinking', onThinking);
+      socket.off('chat:tool_start', onToolStart);
       socket.off('chat:done', onDone);
       socket.off('chat:error', onError);
       socket.off('connect', onConnect);
@@ -225,7 +245,15 @@ export default function ChatThread({ sessionId }: Props) {
             </div>
           </div>
         )}
-        {isWaiting && !isStreaming && (
+        {isToolRunning && !isStreaming && (
+          <div className="message message-assistant">
+            <div className="message-content thinking-indicator tool-running">
+              <span className="tool-running-label">{t('chat.consultingLibrary')}</span>
+              <span className="dot" /><span className="dot" /><span className="dot" />
+            </div>
+          </div>
+        )}
+        {isWaiting && !isStreaming && !isToolRunning && (
           <div className="message message-assistant">
             <div className="message-content thinking-indicator">
               <span className="dot" /><span className="dot" /><span className="dot" />
