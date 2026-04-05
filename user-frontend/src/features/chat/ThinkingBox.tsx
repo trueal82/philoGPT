@@ -1,3 +1,9 @@
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+
 interface Props {
   content: string;
   done: boolean;
@@ -19,7 +25,12 @@ export default function ThinkingBox({ content, done }: Props) {
         {done ? 'Thought process' : 'Thinking\u2026'}
       </summary>
       <div className="thinking-box-content">
-        {cleaned}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
+          {cleaned}
+        </ReactMarkdown>
       </div>
     </details>
   );

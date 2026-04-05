@@ -11,6 +11,8 @@ import ThinkingBox from './ThinkingBox';
 import ChatInput from './ChatInput';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { useUIStore } from '@/shared/stores/uiStore';
 
 interface Props {
@@ -239,7 +241,10 @@ export default function ChatThread({ sessionId }: Props) {
         {isStreaming && streamingContent && (
           <div className="message message-assistant">
             <div className="message-content streaming">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
                 {streamingContent}
               </ReactMarkdown>
             </div>

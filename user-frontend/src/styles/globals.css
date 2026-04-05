@@ -427,8 +427,33 @@ a:hover { text-decoration: underline; }
   max-width: 80%;
 }
 
-.message-content p { margin-bottom: 0.5rem; }
-.message-content p:last-child { margin-bottom: 0; }
+.message-content :where(p),
+.thinking-box-content :where(p) {
+  margin: 0 0 0.5rem;
+}
+
+.message-content :where(p:last-child),
+.thinking-box-content :where(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message-content :where(ul, ol),
+.thinking-box-content :where(ul, ol) {
+  margin: 0.5rem 0;
+  padding-inline-start: 1.4rem;
+  list-style-position: outside;
+}
+
+.message-content :where(li),
+.thinking-box-content :where(li) {
+  margin: 0.2rem 0;
+  padding-left: 0.15rem;
+}
+
+.message-content :where(ol > li)::marker,
+.thinking-box-content :where(ol > li)::marker {
+  font-variant-numeric: tabular-nums;
+}
 
 .message-content pre {
   background: var(--color-bg-secondary);
@@ -540,8 +565,6 @@ a:hover { text-decoration: underline; }
   margin-top: 0.5rem;
   max-height: 200px;
   overflow-y: auto;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
   font-size: 0.78rem;
   line-height: 1.45;
   padding: 0.5rem;
