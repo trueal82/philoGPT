@@ -9,6 +9,9 @@ import { showToast } from '@/shared/stores/toastStore';
 import MessageBubble from './MessageBubble';
 import ThinkingBox from './ThinkingBox';
 import ChatInput from './ChatInput';
+import ContextModal from './ContextModal';
+import CompressingOverlay from './CompressingOverlay';
+import type { ContextUsage } from './ContextRing';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -34,6 +37,9 @@ export default function ChatThread({ sessionId }: Props) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isToolRunning, setIsToolRunning] = useState(false);
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
+  const [showContextModal, setShowContextModal] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['messages', sessionId],
@@ -113,6 +119,10 @@ export default function ChatThread({ sessionId }: Props) {
       setIsToolRunning(false);
       setThinkingContent('');
       setThinkingDone(true);
+      // Extract context usage from metadata
+      if (payload.metadata?.contextUsage) {
+        setContextUsage(payload.metadata.contextUsage as ContextUsage);
+      }
       // metadata is persisted on the Message doc; MessageBubble reads it from there
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
@@ -145,6 +155,20 @@ export default function ChatThread({ sessionId }: Props) {
       }
     };
 
+    const onCompressed = (p: { sessionId: string }) => {
+      if (p.sessionId !== sessionId) return;
+      setIsCompressing(false);
+      setContextUsage(null);
+      queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    };
+
+    const onCompressError = (p: { sessionId: string; error: string }) => {
+      if (p.sessionId !== sessionId) return;
+      setIsCompressing(false);
+      showToast({ kind: 'error', message: p.error || t('toast.chatFailed') }, 5000);
+    };
+
     socket.on('chat:token', onToken);
     socket.on('chat:thinking', onThinking);
     socket.on('chat:tool_start', onToolStart);
@@ -153,6 +177,8 @@ export default function ChatThread({ sessionId }: Props) {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
+    socket.on('chat:compressed', onCompressed);
+    socket.on('chat:compress_error', onCompressError);
 
     return () => {
       socket.off('chat:token', onToken);
@@ -163,6 +189,8 @@ export default function ChatThread({ sessionId }: Props) {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
+      socket.off('chat:compressed', onCompressed);
+      socket.off('chat:compress_error', onCompressError);
     };
   }, [sessionId, queryClient, t]);
 
@@ -199,6 +227,12 @@ export default function ChatThread({ sessionId }: Props) {
     },
     [sessionId, queryClient, t],
   );
+
+  const handleCompress = useCallback(() => {
+    setIsCompressing(true);
+    setShowContextModal(false);
+    getSocket().emit('chat:compress', { sessionId });
+  }, [sessionId]);
 
   if (showErrorModal) {
     return (
@@ -267,7 +301,21 @@ export default function ChatThread({ sessionId }: Props) {
         )}
         <div ref={bottomRef} />
       </div>
-      <ChatInput onSend={handleSend} disabled={isStreaming || isWaiting} onOpenPlan={() => openModal('counselingPlan')} />
+      <ChatInput
+        onSend={handleSend}
+        disabled={isStreaming || isWaiting || isCompressing}
+        onOpenPlan={() => openModal('counselingPlan')}
+        contextUsage={contextUsage}
+        onOpenContextModal={() => setShowContextModal(true)}
+      />
+      {showContextModal && (
+        <ContextModal
+          usage={contextUsage}
+          onClose={() => setShowContextModal(false)}
+          onCompress={handleCompress}
+        />
+      )}
+      {isCompressing && <CompressingOverlay />}
     </div>
   );
 }

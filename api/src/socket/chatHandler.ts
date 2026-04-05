@@ -101,6 +101,13 @@ export function registerChatHandler(io: SocketIOServer): void {
       });
     });
 
+    socket.on('chat:compress', (payload: { sessionId: string }) => {
+      handleCompressSession(socket, user, payload).catch((err) => {
+        log.error({ err, socketId: socket.id }, 'Unhandled error in chat:compress');
+        socket.emit('chat:compress_error', { sessionId: payload?.sessionId, error: 'Compression failed' });
+      });
+    });
+
     socket.on('disconnect', () => {
       log.debug({ userId: user._id, socketId: socket.id }, 'Socket disconnected');
     });
@@ -273,6 +280,16 @@ async function handleChatSend(
     await assistantMessage.save();
     await ChatSession.findByIdAndUpdate(sessionId, { updatedAt: new Date() });
 
+    // Attach context window usage breakdown when contextWindow is configured
+    if ((llmConfig as ILLMConfig).contextWindow) {
+      responseMeta.contextUsage = computeContextUsage(
+        contextMessages,
+        toolDefs,
+        (llmConfig as ILLMConfig).contextWindow!,
+        responseMeta.promptTokens as number | undefined,
+      );
+    }
+
     socket.emit('chat:done', { sessionId, message: assistantMessage, metadata: responseMeta });
     socketLog.info({ responseLength: fullResponse.length }, 'Assistant response complete');
   } catch (err) {
@@ -284,6 +301,125 @@ async function handleChatSend(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Estimate context window usage by category (system prompt vs conversation
+ * history vs tool definitions). When actual promptTokens are available
+ * from Ollama stats, the char-based estimate is scaled to match.
+ */
+function computeContextUsage(
+  contextMessages: ChatMessage[],
+  toolDefs: unknown,
+  contextWindow: number,
+  actualPromptTokens?: number,
+): { usedTokens: number; contextWindow: number; system: number; history: number; tools: number } {
+  const charTokens = (n: number) => Math.ceil(n / 4);
+  const sysChars = contextMessages
+    .filter((m) => m.role === 'system')
+    .reduce((s, m) => s + m.content.length, 0);
+  const histChars = contextMessages
+    .filter((m) => m.role !== 'system')
+    .reduce((s, m) => s + m.content.length + (m.tool_calls ? JSON.stringify(m.tool_calls).length : 0), 0);
+  const toolChars = toolDefs ? JSON.stringify(toolDefs).length : 0;
+
+  const sysEst = charTokens(sysChars);
+  const histEst = charTokens(histChars);
+  const toolEst = charTokens(toolChars);
+  const totalEst = Math.max(1, sysEst + histEst + toolEst);
+
+  const used = actualPromptTokens ?? totalEst;
+  const scale = used / totalEst;
+
+  return {
+    usedTokens: used,
+    contextWindow,
+    system: Math.round(sysEst * scale),
+    history: Math.round(histEst * scale),
+    tools: Math.round(toolEst * scale),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Compress session — summarise history into a single message
+// ---------------------------------------------------------------------------
+
+async function handleCompressSession(
+  socket: Socket,
+  user: IUser,
+  payload: { sessionId: string },
+): Promise<void> {
+  const { sessionId } = payload ?? {};
+  const socketLog = log.child({ socketId: socket.id, userId: user._id, sessionId });
+
+  if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+    socket.emit('chat:compress_error', { sessionId, error: 'Invalid session ID' });
+    return;
+  }
+
+  const session = await ChatSession.findOne({
+    _id: sessionId,
+    userId: (user as IUser & { _id: Types.ObjectId })._id,
+  });
+  if (!session) {
+    socket.emit('chat:compress_error', { sessionId, error: 'Session not found' });
+    return;
+  }
+
+  const llmConfig = await LLMConfig.findOne({ isActive: true }).lean();
+  if (!llmConfig) {
+    socket.emit('chat:compress_error', { sessionId, error: 'No active LLM config' });
+    return;
+  }
+
+  const messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
+  const conversationMessages = messages.filter(
+    (m) => (m.role === 'user' || (m.role === 'assistant' && m.content !== '[tool_call]')) && m.content.trim(),
+  );
+
+  if (conversationMessages.length < 3) {
+    socket.emit('chat:compress_error', { sessionId, error: 'Not enough conversation to compress' });
+    return;
+  }
+
+  const transcript = conversationMessages
+    .map((m) => `${m.role === 'user' ? 'User' : 'Counselor'}: ${m.content}`)
+    .join('\n\n');
+
+  const compressionMessages: ChatMessage[] = [
+    {
+      role: 'user',
+      content: `Summarize the following counseling conversation for context compression. Capture:\n- The user's main concerns and emotional state\n- Key insights discovered together\n- Progress made and breakthroughs\n- Active counseling focus and next steps\n- Important personal facts mentioned\n\nWrite as a third-person summary so the counselor can resume the conversation naturally.\n\n---\n${transcript}\n---\n\nSummary:`,
+    },
+  ];
+
+  try {
+    let summary = '';
+    await streamLLMResponse(
+      llmConfig as ILLMConfig,
+      compressionMessages,
+      async (token) => { summary += token; },
+    );
+
+    if (!summary.trim()) {
+      socket.emit('chat:compress_error', { sessionId, error: 'Compression produced empty summary' });
+      return;
+    }
+
+    await Message.deleteMany({ sessionId });
+    await new Message({
+      sessionId,
+      role: 'assistant',
+      content: `[CONVERSATION SUMMARY]\n\n${summary.trim()}`,
+      metadata: { isCompressed: true },
+    }).save();
+
+    socket.emit('chat:compressed', { sessionId });
+    socketLog.info({ originalCount: messages.length }, 'Session compressed successfully');
+  } catch (err) {
+    socketLog.error({ err }, 'Compression LLM call failed');
+    socket.emit('chat:compress_error', { sessionId, error: 'Compression failed — please try again' });
+  }
+}
 
 /**
  * Build the full system message by rendering the global prompt template with

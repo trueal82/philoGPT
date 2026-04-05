@@ -53,6 +53,7 @@ function LlmConfigForm() {
       <BooleanInput source="isActive" />
       <NumberInput source="temperature" />
       <NumberInput source="maxTokens" />
+      <NumberInput source="contextWindow" label="Context Window (tokens)" helperText="e.g. 131072 for Gemma 4 27B. Required for context usage ring." fullWidth />
       <NumberInput source="topP" />
       <NumberInput source="frequencyPenalty" />
       <NumberInput source="presencePenalty" />

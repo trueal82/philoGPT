@@ -9,6 +9,7 @@ export interface ILLMConfig {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  contextWindow?: number;
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
@@ -33,6 +34,7 @@ const llmConfigSchema = new Schema<ILLMConfig, ILLMConfigModel>(
     model: { type: String, trim: true, maxlength: 100 },
     temperature: { type: Number, min: 0, max: 2 },
     maxTokens: { type: Number, min: 1, max: 128000 },
+    contextWindow: { type: Number, min: 1, max: 10000000 },
     topP: { type: Number, min: 0, max: 1 },
     frequencyPenalty: { type: Number, min: -2, max: 2 },
     presencePenalty: { type: Number, min: -2, max: 2 },

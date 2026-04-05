@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import ContextRing from './ContextRing';
+import type { ContextUsage } from './ContextRing';
 
 interface Props {
   onSend: (content: string) => void;
   disabled?: boolean;
   onOpenPlan?: () => void;
+  contextUsage?: ContextUsage | null;
+  onOpenContextModal?: () => void;
 }
 
-export default function ChatInput({ onSend, disabled, onOpenPlan }: Props) {
+export default function ChatInput({ onSend, disabled, onOpenPlan, contextUsage, onOpenContextModal }: Props) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -76,14 +80,19 @@ export default function ChatInput({ onSend, disabled, onOpenPlan }: Props) {
         rows={1}
         aria-label="Message input"
       />
-      <button
-        type="submit"
-        className="send-btn"
-        disabled={disabled || !text.trim()}
-        aria-label="Send message"
-      >
-        ↑
-      </button>
+      <div className="send-btn-wrapper">
+        {onOpenContextModal && (
+          <ContextRing usage={contextUsage ?? null} onClick={onOpenContextModal} />
+        )}
+        <button
+          type="submit"
+          className="send-btn"
+          disabled={disabled || !text.trim()}
+          aria-label="Send message"
+        >
+          ↑
+        </button>
+      </div>
     </form>
   );
 }

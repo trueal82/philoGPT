@@ -206,7 +206,7 @@ router.get('/llm-configs/:id', authenticateToken, requireAdmin, async (req: Requ
 
 router.post('/llm-configs', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, contextWindow, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
     if (!name || !provider || !VALID_PROVIDERS.includes(provider)) {
       res.status(400).json({ message: 'Name and a valid provider are required' });
       return;
@@ -216,7 +216,7 @@ router.post('/llm-configs', authenticateToken, requireAdmin, async (req: Request
     if (shouldBeActive) {
       await LLMConfig.updateMany({ isActive: true }, { isActive: false });
     }
-    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools: !!supportsTools, isActive: shouldBeActive });
+    const config = new LLMConfig({ name, provider, apiKey, apiUrl, model, temperature, maxTokens, contextWindow, topP, frequencyPenalty, presencePenalty, supportsTools: !!supportsTools, isActive: shouldBeActive });
     await config.save();
     log.info({ configId: config._id, name, provider }, 'LLM config created');
     res.status(201).json({ config, message: 'LLM configuration created successfully' });
@@ -232,8 +232,8 @@ router.put('/llm-configs/:id', authenticateToken, requireAdmin, async (req: Requ
       res.status(400).json({ message: 'Invalid config ID' });
       return;
     }
-    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
-    const update: Record<string, unknown> = { name, provider, apiUrl, model, temperature, maxTokens, topP, frequencyPenalty, presencePenalty };
+    const { name, provider, apiKey, apiUrl, model, temperature, maxTokens, contextWindow, topP, frequencyPenalty, presencePenalty, supportsTools, isActive } = req.body;
+    const update: Record<string, unknown> = { name, provider, apiUrl, model, temperature, maxTokens, contextWindow: contextWindow ?? null, topP, frequencyPenalty, presencePenalty };
     if (apiKey) update.apiKey = apiKey;
     if (supportsTools !== undefined) update.supportsTools = !!supportsTools;
     if (isActive !== undefined) update.isActive = !!isActive;
