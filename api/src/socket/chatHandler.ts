@@ -403,6 +403,7 @@ async function runLLMWithToolLoop(
 ): Promise<{ content: string; metadata: Record<string, unknown> }> {
   const startTime = Date.now();
   const toolCallNames: string[] = [];
+  const timings: Array<{ type: 'llm' | 'tool'; name?: string; round?: number; durationMs: number }> = [];
   let thinkingText = '';
   const wikiLang = lockedLang.split('-')[0];
   const resolvedBotName = typeof botName === 'string' && botName.trim().length > 0
@@ -466,7 +467,9 @@ async function runLLMWithToolLoop(
   // Flush any buffered partial-marker tokens and restore state before each
   // follow-up LLM response (called via resetEmitToken() in the tool loop).
   let result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
-  writeLLMLog(sessionId, userId, botId, botName, llmConfig, 0, contextMessages, result, thinkingText, Date.now() - callStart, socketLog);
+  const round0Ms = Date.now() - callStart;
+  writeLLMLog(sessionId, userId, botId, botName, llmConfig, 0, contextMessages, result, thinkingText, round0Ms, socketLog);
+  timings.push({ type: 'llm', round: 0, durationMs: round0Ms });
 
   // Build a compressor function that calls the same LLM to condense a full
   // Wikipedia article into a dense factual reference before returning it to
@@ -522,6 +525,7 @@ async function runLLMWithToolLoop(
         toolResult = `Error executing tool: ${toolError}`;
       }
       const toolElapsedMs = Date.now() - toolStartMs;
+      timings.push({ type: 'tool', name: toolName, durationMs: toolElapsedMs });
 
       // Persist each tool call before continuing so logs are not dropped.
       try {
@@ -603,7 +607,9 @@ async function runLLMWithToolLoop(
 
     callStart = Date.now();
     result = await streamLLMResponse(llmConfig, contextMessages, emitToken, toolDefs, emitThinking);
-    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound, contextMessages, result, thinkingText, Date.now() - callStart, socketLog);
+    const toolRoundMs = Date.now() - callStart;
+    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound, contextMessages, result, thinkingText, toolRoundMs, socketLog);
+    timings.push({ type: 'llm', round: toolRound, durationMs: toolRoundMs });
 
     // Use inline trailing content if the LLM returned empty
     if (result.type === 'response' && result.content === '' && trailingContent) {
@@ -651,7 +657,9 @@ async function runLLMWithToolLoop(
 
     callStart = Date.now();
     const retry = await streamLLMResponse(llmConfig, flattenedMessages, emitToken, undefined, emitThinking);
-    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound + 1, flattenedMessages, retry, thinkingText, Date.now() - callStart, socketLog);
+    const retryMs = Date.now() - callStart;
+    writeLLMLog(sessionId, userId, botId, botName, llmConfig, toolRound + 1, flattenedMessages, retry, thinkingText, retryMs, socketLog);
+    timings.push({ type: 'llm', round: toolRound + 1, durationMs: retryMs });
     fullResponse = retry.type === 'response' ? retry.content : '';
     if (retry.type === 'response' && retry.stats) lastStats = retry.stats;
   }
@@ -662,6 +670,7 @@ async function runLLMWithToolLoop(
     durationMs,
   };
   if (toolCallNames.length > 0) metadata.toolCalls = toolCallNames;
+  if (timings.length > 1) metadata.timings = timings;
   const cleanedThinking = thinkingText ? stripChannelTags(thinkingText) : '';
   if (cleanedThinking) metadata.thinking = cleanedThinking;
   if (lastStats) {

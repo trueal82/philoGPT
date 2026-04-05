@@ -3,6 +3,50 @@ interface Props {
   onClose: () => void;
 }
 
+interface TimingEntry {
+  type: 'llm' | 'tool';
+  name?: string;
+  round?: number;
+  durationMs: number;
+}
+
+function fmtDur(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function CallTimeline({ timings, totalMs }: { timings: TimingEntry[]; totalMs: number }) {
+  const llmCount = timings.filter((t) => t.type === 'llm').length;
+  return (
+    <div className="call-timeline">
+      {timings.map((entry, i) => {
+        const barPct = Math.max(2, Math.round((entry.durationMs / totalMs) * 100));
+        const pct = Math.round((entry.durationMs / totalMs) * 100);
+        const isLlm = entry.type === 'llm';
+        const label = isLlm
+          ? (llmCount > 1 ? `LLM (round ${(entry.round ?? 0) + 1})` : 'LLM inference')
+          : (entry.name ?? 'tool');
+        return (
+          <div key={i} className="call-timeline-row">
+            <div className="call-timeline-header">
+              <span className={`call-timeline-dot ${isLlm ? 'dot-llm' : 'dot-tool'}`} />
+              <span className="call-timeline-label">{label}</span>
+              <span className="call-timeline-dur">
+                {fmtDur(entry.durationMs)}<span className="call-timeline-pct"> {pct}%</span>
+              </span>
+            </div>
+            <div className="call-timeline-track">
+              <div
+                className={`call-timeline-bar ${isLlm ? 'bar-llm' : 'bar-tool'}`}
+                style={{ width: `${barPct}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function InfoModal({ metadata, onClose }: Props) {
   const model = metadata.model as string | undefined;
   const durationMs = metadata.durationMs as number | undefined;
@@ -11,11 +55,13 @@ export default function InfoModal({ metadata, onClose }: Props) {
   const tokensPerSecond = metadata.tokensPerSecond as number | undefined;
   const evalTokens = metadata.evalTokens as number | undefined;
   const promptTokens = metadata.promptTokens as number | undefined;
+  const timings = metadata.timings as TimingEntry[] | undefined;
+  const hasTimeline = timings && timings.length > 1 && durationMs !== undefined;
 
   return (
     <>
       <div className="info-modal-backdrop" onClick={onClose} />
-      <div className="info-modal">
+      <div className="info-modal" style={hasTimeline ? { maxWidth: '420px' } : undefined}>
         <button className="info-modal-close" onClick={onClose} aria-label="Close">&times;</button>
         <h4 className="info-modal-title">Response Info</h4>
         <dl className="info-modal-list">
@@ -60,6 +106,12 @@ export default function InfoModal({ metadata, onClose }: Props) {
             </>
           )}
         </dl>
+        {hasTimeline && (
+          <div className="info-modal-timeline-section">
+            <div className="info-modal-timeline-title">Call timeline</div>
+            <CallTimeline timings={timings!} totalMs={durationMs!} />
+          </div>
+        )}
       </div>
     </>
   );
