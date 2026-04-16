@@ -1,191 +1,44 @@
 # PhiloGPT
 
-PhiloGPT is a full-stack multi-bot chat platform with:
+**Open-source, self-hosted philosophy chat — powered by local or cloud LLMs.**
 
-- User-facing chat frontend (React + Vite)
-- Admin frontend for content/config management
-- API service (Express + Socket.IO + MongoDB)
-- Startup seeding for demo/default data
+PhiloGPT lets you run a multi-persona AI chat platform entirely on your own infrastructure. Configure philosophical or custom AI bots, manage users and subscriptions through an admin panel, and chat in real time with streaming responses and tool call support.
 
-## Repository Layout
+---
 
-```
-.
-├── api/             # TypeScript API + Socket.IO + seed logic
-├── user-frontend/       # React/Vite chat UI + runtime config server
-├── admin-frontend/      # Legacy admin UI (kept for reference)
-├── admin-frontend-new/  # Active admin UI (React-admin) + runtime config server
-├── docker-compose.yml   # Service topology (parameterized via root .env)
-├── .env.example         # Deployment variable template
-├── start-api.sh
-├── start-user-frontend.sh
-├── start-admin.sh       # Starts active admin frontend
-├── start-mongodb.sh
-└── SYNOLOGY.md          # Synology deployment guide
-```
+## What it does
 
-## Architecture Overview
+- **Multi-bot personas** — run characters like Socrates, Marcus Aurelius, Spock, or your own custom AI
+- **Real-time streaming** — Socket.IO chat with live token output and thinking traces
+- **Tool calling** — extend bots with custom tools and function definitions
+- **Admin panel** — manage bots, prompts, users, subscriptions, LLM configs, and SMTP
+- **Provider agnostic** — Ollama (local), OpenAI, or any compatible API endpoint
+- **Versioned seed patches** — database migrations run automatically on deploy
+- **Context-window ring** — live token usage indicator per message with history compression
+- **Security test suite** — OWASP, IDOR, and auth integration tests included
 
-- API listens internally on container port `5001`.
-- User frontend listens on container port `3002`.
-- Admin frontend listens on container port `3001`.
-- MongoDB listens on container port `27017`.
+---
 
-Both frontends expose runtime config endpoints (`/config.js` for user frontend, `/config` for admin frontend). Those values are injected into the browser, so API URLs must be public/browser-reachable domains.
-
-## Quick Start (Docker Compose)
-
-### 1) Create the root environment file
+## Quick start (Docker)
 
 ```bash
 cp .env.example .env
-```
+# Edit .env — set FRONTEND_URL, ADMIN_URL, API_URL, JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
 
-Edit `.env` and set at least:
-
-- `FRONTEND_URL`
-- `ADMIN_URL`
-- `API_URL`
-- `JWT_SECRET`
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD`
-
-### 2) Build and run
-
-```bash
 docker compose build
 docker compose up -d
-```
 
-### 3) Verify
-
-```bash
 docker compose ps
 docker compose logs api --tail=40
 ```
 
-## Environment Model
-
-The project uses a single root `.env` file for Compose substitution. `docker-compose.yml` references values with `${VAR}` so the compose file itself stays static.
-
-Important variables:
-
-- `FRONTEND_URL`: public chat URL (used in API CORS)
-- `ADMIN_URL`: public admin URL (used in API CORS)
-- `API_URL`: public API URL (injected into both frontends)
-- `API_PORT`, `FRONTEND_PORT`, `ADMIN_PORT`, `MONGO_PORT`: host port mappings
-- `SEED_ON_EMPTY_DB`: seed when DB is empty
-- `PURGE_AND_RESEED`: one-shot destructive reseed flag
-
-## Seeding Behavior
-
-Seeding is owned by the API startup flow:
-
-- If `SEED_ON_EMPTY_DB=true`, API seeds when database is empty.
-- If `PURGE_AND_RESEED=true`, API drops app collections and reseeds.
-
-After a purge run, set `PURGE_AND_RESEED=false` again.
-
-### Versioned seed patches
-
-Every startup the API runs a seed-version check:
-
-1. If no `SeedVersion` record exists (fresh DB, or existing DB upgrading to the versioned system), the current baseline (`v1.0`) is stamped automatically — no data is touched.
-2. Any patches registered in `api/src/scripts/seedPatches.ts` that have an `apply()` function and are not yet recorded are applied in version order, then stamped.
-
-This means **seed migrations run automatically on startup** as long as the new image is deployed — no manual database intervention is needed for typical updates.
-
-The applied versions are visible in the admin panel under **Maintenance → Seed Versions**.
+The API seeds default bots and config on first run. Visit your `FRONTEND_URL` to start chatting.
 
 ---
 
-## Updating a Deployed Instance
+## Local development
 
-This describes the standard update workflow when running under Docker Compose.
-
-### Standard update (no destructive data change)
-
-Pull the new code and redeploy. The API will apply any pending seed patches on startup.
-
-```bash
-git pull
-docker compose build
-docker compose up -d
-```
-
-The API container restarts, connects to the existing MongoDB data, stamps any missing seed-version entries, and applies pending patches. **No data is lost.**
-
-Verify the update completed cleanly:
-
-```bash
-docker compose logs api --tail=60
-```
-
-Look for a line like:
-```
-INFO  Seed versioning check complete  current="1.1" applied=["1.0","1.1"]
-```
-
-### Updating environment variables only
-
-If you only changed values in `.env` (e.g. `LOG_LEVEL`, `LLM_LOG_TTL_DAYS`, URLs):
-
-```bash
-docker compose up -d --force-recreate
-```
-
-No rebuild is needed; Compose re-reads the env file when containers restart.
-
-### Forcing a full reseed (destructive)
-
-Only use this if you want to **wipe all app data** and start fresh (e.g. development/staging reset).
-
-Pass the flag as an inline variable so `.env` is never modified and no reset step is needed.
-
-Without `sudo`:
-```bash
-PURGE_AND_RESEED=true docker compose up -d --force-recreate api
-```
-
-With `sudo` (Synology / restricted environments) — use `sudo env` so the variable survives sudo's environment stripping:
-```bash
-sudo env PURGE_AND_RESEED=true docker compose up -d --force-recreate api
-```
-
-The variable only applies to that single invocation. The next `docker compose up -d` reads `.env` again (`PURGE_AND_RESEED=false`), so the flag cannot accidentally persist.
-
-`--force-recreate` is required because Compose only recreates a container when its image changes; without it, an env-only change is silently ignored.
-
-Verify the reseed completed:
-
-```bash
-docker compose logs api --tail=60
-```
-
-> **Warning:** `PURGE_AND_RESEED=true` drops all app collections including users, sessions, memories, and logs. Never run this against a production database unless you intend to lose all data.
-
-### Adding a seed patch (for developers)
-
-When a new version needs a data migration:
-
-1. Add an entry to `SEED_PATCHES` in `api/src/scripts/seedPatches.ts`:
-   ```ts
-   {
-     version: '1.1',
-     description: 'Short description of what changed',
-     apply: async () => {
-       // migration logic here — runs exactly once per database
-     },
-   }
-   ```
-2. Update `CURRENT_VERSION` in the same file to `'1.1'`.
-3. Deploy as a standard update (`docker compose build && docker compose up -d`). The patch runs automatically on the next startup.
-
-Patches without an `apply()` are baseline markers only (no code runs). Patches are applied in array order; do not reorder or remove existing entries.
-
-## Local Development (Without Docker)
-
-Run services in separate terminals from repo root:
+Run each service in a dedicated terminal from repo root:
 
 ```bash
 ./start-mongodb.sh
@@ -194,81 +47,102 @@ Run services in separate terminals from repo root:
 ./start-admin.sh
 ```
 
-Notes:
-
-- `start-api.sh` runs from `api/`, so API env vars must be available there (for example via `api/.env` or exported shell variables).
-- At minimum, API requires `JWT_SECRET`; typically you also set `MONGODB_URI` and `ALLOWED_ORIGINS`.
-- `start-admin.sh` starts the active admin frontend on `3001`.
-- `start-user-frontend.sh` starts user frontend dev server.
-- `start-api.sh` starts API in watch mode on `5001`.
-
-To stop common local listeners:
+Stop all local listeners:
 
 ```bash
 ./kill_all.sh
 ```
 
-## API Scripts
+---
 
-From `api/`:
+## Repository layout
 
-```bash
-npm run dev        # ts-node runtime
-npm run dev:watch  # nodemon + ts-node
-npm run build      # compile TypeScript
-npm start          # run dist/server.js
-npm test           # jest (all tests)
-npm run test:security  # security-focused integration tests
+```text
+.
+├── api/                 # Express + Socket.IO API — auth, LLM, tools, seed migrations
+├── user-frontend/       # React + Vite user chat app (PWA)
+├── admin-frontend-new/  # React Admin management panel
+├── docs/                # Architecture, contributing, security, and release docs
+├── docker-compose.yml   # Full-stack Compose config (reads from .env)
+├── .env.example         # All required and optional variables documented
+└── SYNOLOGY.md          # NAS and reverse-proxy deployment guide
 ```
 
-## Security Tests
+---
 
-The project includes automated security integration tests covering:
+## Documentation
 
-- **Authentication boundaries** — registration, login, locked accounts, JWT validation
-- **Admin/user separation** — all admin endpoints reject unauthenticated and non-admin users
-- **Data ownership** — users cannot access other users' sessions, messages, or memories
-- **Bot entitlement** — subscription-based bot access control
-- **OWASP checks** — IDOR, role escalation, input validation, invalid ObjectIds, security headers
+| Doc | Description |
+|-----|-------------|
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Setup, PR guidelines, and code expectations |
+| [docs/SECURITY.md](docs/SECURITY.md) | Vulnerability reporting and security hardening |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System components, data flow, and security boundaries |
+| [docs/PUBLIC_RELEASE_CHECKLIST.md](docs/PUBLIC_RELEASE_CHECKLIST.md) | Pre-release checklist |
+| [SYNOLOGY.md](SYNOLOGY.md) | Synology NAS and reverse-proxy deployment guide |
 
-Run from the repo root (no external MongoDB needed — uses in-memory server):
+---
+
+## Scripts
+
+**API** (`api/`):
 
 ```bash
-./run-security-tests.sh          # security tests only
-./run-security-tests.sh --all    # all tests
+npm run dev            # ts-node (single run)
+npm run dev:watch      # nodemon + ts-node watch mode
+npm run build          # compile TypeScript
+npm start              # run compiled dist/server.js
+npm test               # run all tests
+npm run test:security  # OWASP + auth + ownership integration tests
 ```
 
-Or from `api/`:
-
-```bash
-npm run test:security
-```
-
-## Frontend Scripts
-
-From `user-frontend/`:
+**User frontend** (`user-frontend/`):
 
 ```bash
 npm run dev
 npm run build
-npm run preview
 npm run typecheck
 ```
 
-From `admin-frontend-new/`:
+**Admin frontend** (`admin-frontend-new/`):
 
 ```bash
+npm run dev
+npm run build
 npm start
 ```
 
-## API Surface (High-Level)
+---
 
-- `/api/auth`: auth and token workflows
-- `/api/bots`: bot catalog and bot configuration
-- `/api/chat`: chat sessions and messages
-- `/api/admin`: admin-only management endpoints
-- `/health`: health check endpoint
+## Security
 
-## Deployment
+- No secrets in source — all credentials come from `.env`
+- MongoDB is bound to `127.0.0.1` in Compose by default (not publicly exposed)
+- JWT-based auth with strict admin role separation
+- Ownership checks prevent cross-user data access
+- Security tests cover authentication boundaries, IDOR, role escalation, and OWASP Top-10 patterns
 
-For Synology NAS and reverse proxy setup, see `SYNOLOGY.md`.
+Run the security test suite:
+
+```bash
+./run-security-tests.sh
+# or
+cd api && npm run test:security
+```
+
+---
+
+## Collaboration
+
+Contributions are welcome — code, tests, docs, and ideas.
+
+- Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) to get started
+- Open an issue to discuss a bug or feature before submitting a PR
+- For long-term collaboration, open an issue labeled `collaboration`
+- Report security issues privately — see [docs/SECURITY.md](docs/SECURITY.md)
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+

@@ -201,6 +201,32 @@ export async function executeTool(
 const ARTICLE_CHAR_LIMIT = 12_000;
 
 /**
+ * Minimum characters the REST summary extract must have before we skip the
+ * full-article fetch. Famous subjects (philosophers, historical figures) always
+ * exceed this; obscure stubs will fall through to the full extract.
+ */
+const SUMMARY_MIN_CHARS = 500;
+
+/**
+ * Article text shorter than this is returned raw without LLM compression,
+ * avoiding a full second inference pass for content that is already concise.
+ */
+const COMPRESS_THRESHOLD = 2500;
+
+/** Per-request fetch timeout in milliseconds. */
+const FETCH_TIMEOUT_MS = 8_000;
+
+/** Wrap fetch with a hard timeout so a slow Wikipedia server cannot hang the chat. */
+function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+/**
  * Fetch the full plain text extract for a resolved Wikipedia article title.
  * Uses the MediaWiki Action API with explaintext=1 so the result is clean prose.
  */
@@ -218,7 +244,7 @@ async function fetchWikipediaExtract(
     format: 'json',
   }).toString();
 
-  const resp = await fetch(url, { headers });
+  const resp = await fetchWithTimeout(url, { headers });
   if (!resp.ok) return '';
 
   const data = await resp.json() as {
@@ -246,19 +272,28 @@ async function executeWikipedia(
   log.debug({ query, language }, 'Executing Wikipedia lookup');
 
   try {
-    // Step 1 – resolve canonical article title via fast summary endpoint.
-    // We only need the title and disambiguation flag — the summary text itself
-    // is discarded in favour of the full extract fetched in step 3.
+    // Step 1 – resolve canonical article title via the REST summary endpoint.
+    // If the summary already returns a sufficiently long extract we use it
+    // directly, skipping the full-article fetch in step 3 entirely.
     let resolvedTitle: string | null = null;
+    let summaryExtract: string | null = null;
 
-    const summaryResp = await fetch(
+    const summaryResp = await fetchWithTimeout(
       `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query.trim())}`,
       { headers: reqHeaders },
     );
     if (summaryResp.ok) {
-      const summaryData = await summaryResp.json() as { title?: string; type?: string };
+      const summaryData = await summaryResp.json() as {
+        title?: string;
+        type?: string;
+        extract?: string;
+      };
       if (summaryData.type !== 'disambiguation') {
         resolvedTitle = summaryData.title ?? query.trim();
+        const ext = summaryData.extract ?? '';
+        if (ext.length >= SUMMARY_MIN_CHARS) {
+          summaryExtract = ext;
+        }
       }
     }
 
@@ -267,7 +302,7 @@ async function executeWikipedia(
     if (!resolvedTitle) {
       log.debug({ query, language }, 'Wikipedia direct lookup missed; falling back to search');
 
-      const searchResp = await fetch(
+      const searchResp = await fetchWithTimeout(
         `https://${language}.wikipedia.org/w/api.php?` + new URLSearchParams({
           action: 'query',
           list: 'search',
@@ -294,16 +329,23 @@ async function executeWikipedia(
       resolvedTitle = hits[0].title;
     }
 
-    // Step 3 – fetch the full plain-text article.
-    const fullText = await fetchWikipediaExtract(resolvedTitle, language, reqHeaders);
-    if (!fullText) {
-      return `No Wikipedia article found for "${query}".`;
+    // Step 3 – fetch the full plain-text article only when the summary extract
+    // was absent or too short to be useful.
+    let articleText: string;
+    if (summaryExtract) {
+      log.debug({ resolvedTitle }, 'Using REST summary extract; skipping full-article fetch');
+      articleText = `${resolvedTitle}\n\n${summaryExtract}`;
+    } else {
+      const fullText = await fetchWikipediaExtract(resolvedTitle, language, reqHeaders);
+      if (!fullText) {
+        return `No Wikipedia article found for "${query}".`;
+      }
+      articleText = `${resolvedTitle}\n\n${fullText.slice(0, ARTICLE_CHAR_LIMIT)}`;
     }
 
-    const articleText = `${resolvedTitle}\n\n${fullText.slice(0, ARTICLE_CHAR_LIMIT)}`;
-
-    // Step 4 – compress via the injected LLM compressor (if available).
-    if (compressFn) {
+    // Step 4 – compress via the injected LLM compressor only when the text is
+    // long enough to warrant a second inference pass.
+    if (compressFn && articleText.length > COMPRESS_THRESHOLD) {
       try {
         const compressed = await compressFn(articleText);
         if (compressed.trim()) {
@@ -315,10 +357,15 @@ async function executeWikipedia(
       }
     }
 
-    // Fallback: no compressor or compression failed — return truncated raw text.
-    const result = `${resolvedTitle}: ${fullText}`;
+    // Fallback: no compressor, compression failed, or text was already short —
+    // return the article text, hard-capped to keep the context window sane.
+    const result = `${resolvedTitle}: ${articleText}`;
     return result.length > 4000 ? result.slice(0, 4000) + '...' : result;
   } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      log.warn({ query }, 'Wikipedia fetch timed out');
+      return `Wikipedia lookup timed out for "${query}". Please try again.`;
+    }
     log.error({ err, query }, 'Wikipedia lookup error');
     return `Wikipedia lookup failed: ${(err as Error).message}`;
   }
